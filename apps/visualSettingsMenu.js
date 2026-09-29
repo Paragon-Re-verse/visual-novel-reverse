@@ -433,6 +433,22 @@ export class VisualSettingsMenu extends FormApplication {
                     return acc
                 }, {offset: {}})
 
+                // Позиция муверов (header/left/right слайдер) - хранится не в <input>, а прямо в
+                // инлайновом style элемента-слайдера (см. onMouseMove/onMouseUp ниже и мовер-ресет
+                // выше) - .vsm-UI не содержит скрытых input с data-key="offset.*", поэтому reduce
+                // выше НИКОГДА не заполняет presetData.offset. Без этого чтения перетаскивание
+                // мувера в этом (не Detailed) режиме визуально двигалось, кнопка "Сохранить"
+                // подсвечивалась, но при сохранении offset уходил пустым объектом и просто
+                // игнорировался mergeObject'ом в PresetUIClass.updatePreset - позиция никогда не
+                // персистилась.
+                ;["headerSlider", "leftSlider", "rightSlider"].forEach(sliderType => {
+                    const sliderSide = sliderType.includes("right") ? "right" : "left"
+                    const sliderEl = html[0].querySelector(`.vsm-move-${sliderType}`)
+                    if (!sliderEl) return
+                    presetData.offset[`${sliderType}X`] = parseInt(sliderEl.style[sliderSide]) || 0
+                    presetData.offset[`${sliderType}Y`] = parseInt(sliderEl.style.top) || 0
+                })
+
                 // Главный слот
                 presetData.masterSlot = {
                     left: Array.from(slotButtons).filter(el => el.parentElement.dataset.key == "left").find(el => el.classList.contains('vsm-active'))?.dataset?.pos || "first",
@@ -952,6 +968,16 @@ export class VisualSettingsMenu extends FormApplication {
         const clamp = (v) => Math.max(0, Math.min(100, v));
         function onMouseMove(e) {
             if (!isDragging) return;
+            // Самоочистка прерванного драга: detailModeChanges() удаляет этот узел из DOM при
+            // выходе из Detailed mode (или повторном входе) в любой момент, включая посреди
+            // перетаскивания - без этой проверки document-level mousemove/mouseup оставались бы
+            // висеть вечно, молча двигая уже отвязанный от своей ручки слайдер.
+            if (!moverBody.isConnected) {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                return;
+            }
             const dx = Math.round(((e.clientX - startX) / window.innerWidth) * ({right: -100, header: 143}[side] || 100));
             const dy = Math.round(((e.clientY - startY) / window.innerHeight) * 100);
             const shiftPressed = e.shiftKey;
@@ -1031,9 +1057,14 @@ export class VisualSettingsMenu extends FormApplication {
         // скриншот в отчёте о багах), с отступом от РЕАЛЬНОГО нижнего края bar на экране - его высота
         // зависит от scale (50-300%) и наличия имени, поэтому считается через getBoundingClientRect(),
         // а не через фиксированный отступ в px/% (не совпал бы с реальным краем на большом scale).
+        // dragParentRect - кэш getBoundingClientRect() родителя на время одного драга (см. mousedown/
+        // mouseup ниже). Родитель (#vn-bars) не двигается и не меняет размер во время перетаскивания
+        // самого bar, а syncMoverPosition вызывается на КАЖДЫЙ mousemove - без кэша это лишний
+        // синхронный reflow на каждый пиксель перетаскивания.
+        let dragParentRect = null;
         const syncMoverPosition = () => {
             moverBody.style.left = `${parseFloat(barEl.style.left) || 0}%`;
-            const parentRect = barEl.parentElement.getBoundingClientRect();
+            const parentRect = dragParentRect || barEl.parentElement.getBoundingClientRect();
             const barRect = barEl.getBoundingClientRect();
             const gapPx = 10;
             const topPercent = ((barRect.bottom - parentRect.top + gapPx) / parentRect.height) * 100;
@@ -1093,6 +1124,7 @@ export class VisualSettingsMenu extends FormApplication {
             initialX = parseInt(barEl.style.left?.split("%")?.[0]) || 0;
             initialY = parseInt(barEl.style.top?.split("%")?.[0]) || 0;
             grab.style.cursor = 'grabbing';
+            dragParentRect = barEl.parentElement.getBoundingClientRect();
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
@@ -1108,6 +1140,13 @@ export class VisualSettingsMenu extends FormApplication {
         // пересчитываем через syncMoverPosition() при каждом обновлении позиции bar.
         function onMouseMove(e) {
             if (!isDragging) return;
+            // Самоочистка прерванного драга - см. тот же приём в _getMoverEl выше по файлу.
+            if (!moverBody.isConnected) {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                return;
+            }
             const dx = Math.round(((e.clientX - startX) / window.innerWidth) * 100);
             const dy = Math.round(((e.clientY - startY) / window.innerHeight) * 100);
             const shiftPressed = e.shiftKey;
@@ -1141,6 +1180,7 @@ export class VisualSettingsMenu extends FormApplication {
         async function onMouseUp() {
             isDragging = false;
             grab.style.cursor = 'grab';
+            dragParentRect = null;
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
             document.getElementById("vsm-detailUI-save")?.classList?.toggle("vsm-save-pulse", true)

@@ -565,8 +565,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         // узле (браузеру не от чего "оттолкнуться"). Поэтому переключатель "Блюр фона" в effectsPanel.js
         // больше НЕ запрашивает renderParts:["background"] - вместо этого Hooks.on("updateSetting", ...)
         // ниже по файлу вызывает эту функцию напрямую на уже существующем узле.
-        _applyBackgroundVisualEffects()
-        _applyBarVisualState()
+        _applyBackgroundVisualEffects(fxSettings)
+        _applyBarVisualState(fxSettings)
         _reattachDetailModeMovers()
     }
 
@@ -650,6 +650,11 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
 
         // Добавление нового персонажа (портрета) через ActorPicker (../app/actorPicker.js)
         if (targetEl?.classList?.contains("vn-pBody")) {
+            // Единственный зарегистрированный источник этого drop'а - .vn-mo-item img (мини-очередь,
+            // см. options.dragDrop выше по файлу) - та же операция, что делает клик по элементу
+            // мини-очереди (allowTo('miniOrder') в _portraitClick/_deletePortraitFromOrder). Без этой
+            // проверки drag-and-drop полностью обходил права, настроенные ГМом для этого действия.
+            if (!allowTo('miniOrder')) return
             const currentSpeaker = settings.activeSpeakers[position]
             settings.activeSpeakers[position] = transferData.portraitData
             let renderParts = [`${position}Portrait`, "foreground"]
@@ -679,6 +684,10 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             await requestSettingsUpdate(settings, {renderData: {renderParts}})
         // Окно редактирования VN - перемещение (смена) портрета
         } else if (targetEl?.classList?.contains("vn-ew-slot")) {
+            // Все остальные действия внутри окна редактирования (открытие, применение, удаление
+            // спрайтов и т.д.) гейтятся allowTo("editWindow") - drag-and-drop внутри него не был
+            // исключением.
+            if (!allowTo('editWindow')) return
             let renderParts = [`${position}Portrait`, "foreground"]
             if (transferData.portraitSlot) {
                 settings.activeSpeakers[transferData.portraitSlot] = getActivePortrait(targetEl.dataset.id, settings, position) || null
@@ -1296,7 +1305,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
                             img: masterSlotSpeaker.img,
                             name: `${masterSlotSpeaker.name}${masterSlotSpeaker.title ? `, ${masterSlotSpeaker.title}` : ""}`,
                         })
-                        if (settingData.order.length > 6) settingData.order["left"].shift()
+                        if (settingData.order["left"].length > 6) settingData.order["left"].shift()
                         renderParts.push("headerSlider")
                     }
 
@@ -1318,6 +1327,11 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             await requestSettingsUpdate(settingData, _options)
             // VisualNovelDialogues._render(renderParts)
         } else {
+            // Правый клик (или левый без права 'requests') - отклонить/отменить заявку. Разрешено
+            // тому, у кого есть право 'requests' (тот же, кто может принять), ИЛИ автору заявки,
+            // отменяющему свою же (request.id == id создателя, см. _createRequest). Без этой проверки
+            // любой игрок мог правым кликом удалить ЧУЖУЮ заявку из общей очереди.
+            if (!allowTo('requests') && target.dataset.id !== game.user.id) return
             // Временный костыль до обновления Advanced Requests
             const _options = {change: ["requestsRemove"], requestId: target.dataset.id, renderData: {renderParts: ["foreground"]}}
 
@@ -1395,6 +1409,10 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         await requestSettingsUpdate(settings, {renderData: {renderParts: [`${pos}Portrait`, "foreground"]}})
     }
     static async _nameAndTitleContextMenu(event, target) {
+        // Плашка с именем/титулом видна и кликабельна (ПКМ) всем клиентам - без этой проверки любой
+        // игрок мог включить/выключить показ имени и титула другому, минуя allowTo("editWindow"),
+        // которым гейтится тот же самый переключатель внутри окна редактирования.
+        if (!allowTo('editWindow')) return
         const side = target.dataset.side
         const hideWhat = target.dataset.type
         const uiPreset = PresetUIClass.getActivePreset()
@@ -1728,10 +1746,9 @@ function _updateRowLayer(rowEl, settingData) {
 // _injectEffectStyles) не может анимировать свойство на только что созданном узле - браузер красит его
 // сразу в конечное состояние, отсюда "мгновенный" блюр вместо плавного. Вызов этой функции напрямую на
 // персистентном узле чинит это в корне, не трогая логику самого кропа/прокрутки/блюра.
-function _applyBackgroundVisualEffects() {
+function _applyBackgroundVisualEffects(fxSettings = getSettings()) {
     const bgImgEl = document.getElementById("vn-background-image")
     if (!bgImgEl) return
-    const fxSettings = getSettings()
     const loc = fxSettings.location || {}
     const hasResolvedCrop = Number.isFinite(loc.bgSizeX) && Number.isFinite(loc.bgSizeY)
     const scrollOn = !!fxSettings.bgScroll
@@ -1806,8 +1823,7 @@ function _isBarVisible(content, barsAlwaysShow, inDetailedMode) {
 // (иначе CSS transition заполнения не анимируется на только что пересозданном узле). Если для bar ещё
 // нет DOM-узла (он только что создан ГМом в панели "Эффекты" - структурное изменение), эта функция его
 // не создаёт - для этого panel явно просит renderParts:["bars"] один раз при создании записи в barsData.
-function _applyBarVisualState() {
-    const settingData = getSettings()
+function _applyBarVisualState(settingData = getSettings()) {
     const uiData = PresetUIClass.getActivePreset()
     const barsAlwaysShow = game.settings.get(C.ID, "barsAlwaysShow")
     const barsContent = settingData.barsData || []
@@ -1914,8 +1930,9 @@ function _reattachDetailModeMovers() {
 setInterval(() => {
     const barEls = document.querySelectorAll('.vn-bar[data-bar-id]')
     if (!barEls.length) return
-    const settingData = getSettings()
-    const barsContent = settingData.barsData || []
+    // peekSetting, а не getSettings() - этот тик только читает barsData раз в секунду и никогда его
+    // не мутирует, полный deepClone всего дерева vnData (локации, портреты, заявки...) здесь не нужен.
+    const barsContent = peekSetting('barsData') || []
     const barsAlwaysShow = game.settings.get(C.ID, "barsAlwaysShow")
     const inDetailedMode = game.settings.get(C.ID, "viewMode")
     barEls.forEach(barEl => {
@@ -2211,10 +2228,12 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
         // по файлу (транзишены на пересозданном узле не анимируются). Вызывается для ВСЕХ обновлений
         // vnData (дёшево и идемпотентно, no-op если узла ещё нет в DOM), а не только для тех, что явно
         // просят renderParts:["background"].
-        _applyBackgroundVisualEffects()
+        // setting.value - уже актуальный vnData этого же обновления (Foundry передаёт его готовым в
+        // хук) - переиспользуем его вместо ещё одного getSettings()/deepClone здесь же.
+        _applyBackgroundVisualEffects(setting.value)
         // То же самое для bar (панель "Эффекты") - плавную анимацию заполнения нельзя получить на
         // узле, пересозданном Handlebars-рендером части "bars", см. _applyBarVisualState() ниже.
-        _applyBarVisualState()
+        _applyBarVisualState(setting.value)
         if (diff?.renderData) VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
     }
 
@@ -2238,7 +2257,7 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
 
     // Переключаем синхронизацию в Advanced Requests -> переключаем её и в VN
     if (setting.key == `advanced-requests.visualNovelSync`) {
-        await game.settings.set(C.ID, 'advancedRequestsSync', value.key)
+        await game.settings.set(C.ID, 'advancedRequestsSync', value.value)
     // Создаём заявку  в Advanced Requests -> создаём её и в VN
     } else if (setting.key == `advanced-requests.queue` && game.settings.get(C.ID, 'advancedRequestsSync')) {
         if (diff.stopFuckingAround) return
@@ -2250,7 +2269,7 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
     }
 
     // Пользователь изменяет настройку "Discord: Ваш ID/ник" -> меняем его в списке "Discord: список ID пользователей"
-    if (setting.key == `${C.ID}.discordUserId` && game.user.isGMM) {
+    if (setting.key == `${C.ID}.discordUserId` && game.user.isGM) {
         const disSetting = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUserId'), {userId: userId, discordId: setting.value})
         await game.settings.set(C.ID, 'discordUsersIds', disSetting)
     }

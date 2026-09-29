@@ -48,7 +48,7 @@ export class DiscordIntegration {
                 VisualNovelDialogues._render(["foreground"], null, true);
                 
                 // Отправляем ID канала после подключения на всякий случай (ну чтоб наверняка)
-                const channelId = game.settings.get('novel-dialogue-remai', 'discordChannelId');
+                const channelId = game.settings.get(C.ID, 'discordChannelId');
                 console.log(game.i18n.localize(`${C.ID}.discordBridge.retrievedChannel`), '->', channelId);
                 
                 if (!channelId) {
@@ -72,7 +72,16 @@ export class DiscordIntegration {
             };
 
             this.ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+                // Тот же приём, что и в sendMessage() ниже (там уже обёрнуто) - сообщение от
+                // локального Discord-бота может прийти обрезанным/битым (например, во время
+                // перезапуска бриджа), некорректный JSON не должен ронять весь обработчик.
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    console.error(game.i18n.localize(`${C.ID}.discordBridge.errorReceivingMessage`), ': ', error);
+                    return;
+                }
                 this.handleDiscordEvent(data);
             };
 

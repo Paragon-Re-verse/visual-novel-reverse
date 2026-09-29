@@ -17,21 +17,27 @@ const locationElement = (location, hasEditFilter = false) => {
     locationEl.className = `lp-location-option flexcol${hasEditFilter ? ' lp-hlight-blue' : ''}`
     locationEl.dataset.id = location.id
     locationEl.addEventListener('click', locationListener)
-    locationEl.addEventListener('contextmenu', async (event) => {
+    locationEl.addEventListener('contextmenu', (event) => {
         event.preventDefault()
-        const editableLocation = peekSetting("locationList").find(m => m.id == event.currentTarget.dataset.id)
-        const textureSize = await getTextureSize(editableLocation.backgroundImage)
-        // new LocationPickerSettings({...editableLocation, ...textureSize}).render(true)
+        // Раньше здесь ещё читались editableLocation/getTextureSize (результат никуда не
+        // использовался) - лишний await на декодирование картинки откладывал открытие диалога.
         LocationPickerSettings.open(event.currentTarget.dataset.id)
     })
     // Тело изображения
     const imgBodyEl = document.createElement('div')
     imgBodyEl.className = 'lp-location-img-body'
-    imgBodyEl.innerHTML = `<img src="${location.backgroundImage}">`
+    // img.src, а не innerHTML со строковой интерполяцией - имя/путь локации приходит из свободного
+    // текстового поля ГМа (или импортированного мира/компендиума) без экранирования; кавычка в пути
+    // ломала атрибут, а <script>/onerror= в названии выполнялся бы прямо в клиенте ГМа.
+    const imgEl = document.createElement('img')
+    imgEl.src = location.backgroundImage
+    imgBodyEl.appendChild(imgEl)
     // Тело названия
     const nameBodyEl = document.createElement('div')
     nameBodyEl.className = 'lp-location-text-body'
-    nameBodyEl.innerHTML = `<label>${location.locationName}</label>`
+    const nameLabelEl = document.createElement('label')
+    nameLabelEl.textContent = location.locationName
+    nameBodyEl.appendChild(nameLabelEl)
     // Кнопка удаления
     const deleteBtnEl = document.createElement('button')
     deleteBtnEl.className = 'lp-delete-button'
@@ -242,9 +248,13 @@ async function openScaleDialog(location) {
             let dragging = false
             let dragStartClientX = 0, dragStartClientY = 0
             let dragStartOffsetX = 0, dragStartOffsetY = 0
+            // dragImgRect - кэш getBoundingClientRect() превью на время одного драга (тот же приём,
+            // что и dragParentRect у bar-мувера в visualSettingsMenu.js) - сама картинка не меняет
+            // размер во время перетаскивания рамки, а onPointerMove вызывается на каждый mousemove.
+            let dragImgRect = null
             const onPointerMove = (event) => {
                 if (!dragging) return
-                const rect = imgEl.getBoundingClientRect()
+                const rect = dragImgRect || imgEl.getBoundingClientRect()
                 if (!rect.width || !rect.height) return
                 const dxFrac = (event.clientX - dragStartClientX) / rect.width
                 const dyFrac = (event.clientY - dragStartClientY) / rect.height
@@ -253,6 +263,7 @@ async function openScaleDialog(location) {
             const onPointerUp = () => {
                 if (!dragging) return
                 dragging = false
+                dragImgRect = null
                 document.removeEventListener('mousemove', onPointerMove)
                 document.removeEventListener('mouseup', onPointerUp)
             }
@@ -263,6 +274,7 @@ async function openScaleDialog(location) {
                 dragStartClientY = event.clientY
                 dragStartOffsetX = dialogState.offsetX
                 dragStartOffsetY = dialogState.offsetY
+                dragImgRect = imgEl.getBoundingClientRect()
                 document.addEventListener('mousemove', onPointerMove)
                 document.addEventListener('mouseup', onPointerUp)
             })
@@ -282,7 +294,13 @@ const deleteButtonListener = async (event) => {
     const type = event.currentTarget.getAttribute('type')
     // Удалить фильтр
     if (type == "deleteFilter") {
-        settings.locationFilters = settings.locationFilters.filter(m => m.name != event.currentTarget.dataset.name)
+        const deletedFilterName = event.currentTarget.dataset.name
+        settings.locationFilters = settings.locationFilters.filter(m => m.name != deletedFilterName)
+        // Чистим ссылку на удалённый фильтр у всех локаций - иначе locationTags хранит "осиротевшее"
+        // имя навсегда (не видно в UI, т.к. самого фильтра больше нет), и создание НОВОГО фильтра с
+        // тем же именем магически "воскрешает" старую привязку без какого-либо действия ГМа.
+        settings.locationList.forEach(m => m.locationTags = (m.locationTags || []).filter(tag => tag != deletedFilterName))
+        if (settings.location) settings.location.locationTags = (settings.location.locationTags || []).filter(tag => tag != deletedFilterName)
         await requestSettingsUpdate(settings)
         LocationPicker.refresh()
     // Удалить локацию
@@ -479,9 +497,13 @@ export class LocationPicker extends FormApplication {
             input.placeholder = this.mode == "parent" ? game.i18n.localize(`${C.ID}.locationPicker.placeholderParent`) : game.i18n.localize(`${C.ID}.locationPicker.placeholderLocation`)
             this._filterLocations(html)
         })
-        // Поиск по тексту
-        html.find('.lp-search-input').on('keyup', async (event) => {
-            this._filterLocations(html)
+        // Поиск по тексту - debounce, т.к. _filterLocations полностью пересобирает список карточек
+        // (innerHTML = "" + новые <img>) на каждый вызов, а не просто скрывает/показывает существующие -
+        // без задержки это дёргается на каждое нажатие клавиши и заметно тормозит на большой библиотеке.
+        let searchDebounceTimer = null
+        html.find('.lp-search-input').on('keyup', (event) => {
+            clearTimeout(searchDebounceTimer)
+            searchDebounceTimer = setTimeout(() => this._filterLocations(html), 200)
         })
         html.find('.lp-search-input').on('keydown', function(event) {
             if (event.key === 'Enter') {
@@ -513,11 +535,8 @@ export class LocationPicker extends FormApplication {
             await locationListener(event)
         })
         // ПКМ по локации - настройки локации
-        html.find('.lp-location-option').on('contextmenu', async (event) => {
+        html.find('.lp-location-option').on('contextmenu', (event) => {
             event.preventDefault()
-            const editableLocation = peekSetting("locationList").find(m => m.id == event.currentTarget.dataset.id)
-            const textureSize = await getTextureSize(editableLocation.backgroundImage)
-            // new LocationPickerSettings({...editableLocation, ...textureSize}).render(true)
             LocationPickerSettings.open(event.currentTarget.dataset.id)
         })
         // ЛКМ по фильтру

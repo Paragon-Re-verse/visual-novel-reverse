@@ -74,6 +74,7 @@
                                 <option value="counter" {{#unless this.isTimer}}selected{{/unless}}>{{localize "visual-novel-reverse.effectsPanel.barModeCounter"}}</option>
                                 <option value="timer" {{#if this.isTimer}}selected{{/if}}>{{localize "visual-novel-reverse.effectsPanel.barModeTimer"}}</option>
                             </select>
+                            <button type="button" class="vn-fx-bar-delete-button" data-tooltip="{{localize "visual-novel-reverse.visualSettingsMenu.deleteBarTooltip"}}"><i class="fas fa-trash"></i></button>
                         </div>
                         <div class="vn-fx-bar-row-name flexrow">
                             <input type="text" data-key="name" value="{{this.name}}" placeholder="{{localize "visual-novel-reverse.effectsPanel.barNamePlaceholder"}}">

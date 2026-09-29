@@ -597,6 +597,7 @@
             "speaking": " говорит",
             "stoppedSpeaking": " перестал говорить",
             "errorSendingMessage": "Ошибка при отправке сообщения в Discord Bridge",
+            "errorReceivingMessage": "Ошибка при разборе сообщения от Discord Bridge",
             "webSocketFailed": "Ошибка при создании WebSocket соединения: "
         },
         "discordMenu": {

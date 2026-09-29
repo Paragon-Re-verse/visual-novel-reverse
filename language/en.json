@@ -597,6 +597,7 @@
             "speaking": " is speaking",
             "stoppedSpeaking": " stopped speaking",
             "errorSendingMessage": "Error sending message to Discord Bridge",
+            "errorReceivingMessage": "Error parsing message from Discord Bridge",
             "webSocketFailed": "Failed to create WebSocket connection: "
         },
         "discordMenu": {

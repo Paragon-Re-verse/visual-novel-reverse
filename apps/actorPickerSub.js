@@ -1,4 +1,4 @@
-import { Constants as C, getDefaultPortraitData, getPortrait, getSettings, getTags, updatePortrait } from '../scripts/const.js';
+import { Constants as C, getDefaultPortraitData, getPortrait, getSettings, getTags, requestSettingsUpdate, updatePortrait } from '../scripts/const.js';
 import { ActorPicker } from './actorPicker.js';
 
 export class ActorPickerSub extends FormApplication {
@@ -257,9 +257,17 @@ export class ActorPickerSub extends FormApplication {
             }
         });
         html.find('.aps-delete-button').on('click', async (event) => {
+            // Та же проверка владения, что и у кнопки "Сохранить" чуть выше - без неё запись падала
+            // молча (vnData - мировая настройка, game.settings.set недоступен не-ГМ клиентам), а
+            // игрок без прав ГМа/владения этим актёром вообще не должен уметь удалять чужой портрет.
+            const actor = game.actors.get(_id)
+            if (!game.user.isGM && !(actor?.ownership?.[game.user.id] >= 3)) {
+                ui.notifications.error(game.i18n.localize(`${C.ID}.actorPickerSub.noPermission`))
+                return
+            }
             const settings = getSettings()
             settings.portraits = settings.portraits.filter(m => m.id != _id)
-            await game.settings.set(C.ID, "vnData", settings)
+            await requestSettingsUpdate(settings)
             this.close();
         })
         html.find('.aps-file-picker').on('click', async (event) => {

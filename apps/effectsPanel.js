@@ -266,6 +266,18 @@ export class EffectsPanel extends FormApplication {
                 const totalSeconds = Math.max(1, h * 3600 + m * 60 + s)
                 upsertBar({ mode: "timer", timerDurationSeconds: totalSeconds, timerEndTimestamp: Date.now() + totalSeconds * 1000, value: 100 })
             })
+
+            // Второй способ удалить bar (первый - кнопка на мувере в Detailed mode, visualSettingsMenu.js) -
+            // та же пара действий: убрать из раскладки пресета (PresetUIClass.removeBar) и из живого
+            // содержимого (barsData), иначе актив копился бы в позиционировании без данных.
+            rowEl.querySelector('.vn-fx-bar-delete-button')?.addEventListener('click', async () => {
+                const preset = PresetUIClass.getActivePreset()
+                await PresetUIClass.removeBar(preset.id, barId)
+                const settingData = getSettings()
+                const barsData = (settingData.barsData || []).filter(b => b.id !== barId)
+                await quickSettingsUpdate({ barsData }, { renderData: { renderParts: ["bars"] } })
+                this.render()
+            })
         })
     }
 

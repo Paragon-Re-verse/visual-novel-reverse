@@ -2,6 +2,20 @@ import { Constants as C, createBackup, defaultPermissions, getSettings, selector
 import { VisualNovelDialogues } from './main.js';
 import { SlidersSetClass } from './slidersSetClass.js';
 
+// Опрашивает DOM, пока getter() не вернёт узел (или не истечёт таймаут) - используется вместо
+// фиксированной задержки перед обращением к элементам VN-окна сразу после его (пере)рендера,
+// который сам по себе не await'ится (см. .csm-preview ниже) и на холодном открытии может не
+// успеть за фиксированную паузу.
+async function _waitForElement(getter, timeoutMs = 2000, intervalMs = 20) {
+    const start = Date.now()
+    let el = getter()
+    while (!el && Date.now() - start < timeoutMs) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+        el = getter()
+    }
+    return el
+}
+
 let settingCategories = {};
 export function addMenuSetting(key, category) {
     setProperty(settingCategories, key.split(' ').join('-'), category);
@@ -247,18 +261,23 @@ export class CustomSlidersSet extends FormApplication {
             if (settings.showVN) {
                 VisualNovelDialogues._render(["headerSlider", "leftSlider", "rightSlider"])
             } else {
-                VisualNovelDialogues.toggleVN(true)
+                await VisualNovelDialogues.toggleVN(true)
             }
             const setId = event.currentTarget.parentElement.parentElement.dataset.id
             const styleSettings = foundry.utils.deepClone(game.settings.get(C.ID, 'style'))
             const setData = styleSettings.sliderSets.find(el => el.id == setId)
             if (!setData) return
-            await new Promise((resolve) => setTimeout(resolve, 50)); // Небольшая задержка чтобы круто было блять крч чё доебался???
-            document.getElementById(`vn-up`).querySelector('.vn-header').src = setData.headerImg
-            document.getElementById(`vn-left-slide-back`).src = setData.leftSliderBack
-            document.getElementById(`vn-left-slide-top`).src = setData.leftSlider
-            document.getElementById(`vn-right-slide-back`).src = setData.rightSliderBack
-            document.getElementById(`vn-right-slide-top`).src = setData.rightSlider
+            // Раньше здесь была фиксированная задержка 50мс - при холодном рендере VN-окна (первое
+            // открытие в сессии, ре-рендер выше не await'ится сам по себе, только сокет/settings.set)
+            // этого не всегда хватало, и .querySelector ниже падал на null. Вместо фиксированной паузы
+            // ждём появления самого узла (до 2 секунд), опрашивая DOM.
+            const headerImgEl = await _waitForElement(() => document.getElementById(`vn-up`)?.querySelector('.vn-header'))
+            if (!headerImgEl) return
+            headerImgEl.src = setData.headerImg
+            document.getElementById(`vn-left-slide-back`)?.setAttribute('src', setData.leftSliderBack)
+            document.getElementById(`vn-left-slide-top`)?.setAttribute('src', setData.leftSlider)
+            document.getElementById(`vn-right-slide-back`)?.setAttribute('src', setData.rightSliderBack)
+            document.getElementById(`vn-right-slide-top`)?.setAttribute('src', setData.rightSlider)
         })
         // Изменение настроек сета
         html.find('.csm-edit').on('click', async (event) => {
