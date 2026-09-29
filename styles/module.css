@@ -4246,6 +4246,24 @@ select[name=hostUserId] option {
   border-color: #782e22;
   color: aliceblue;
 }
+.vn-fx-bar-delete-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 5px;
+  background-color: #53565d;
+  border: 1px solid #363636;
+  color: #e06c6c;
+  cursor: pointer;
+}
+.vn-fx-bar-delete-button:hover {
+  background-color: #6b2a20;
+  border-color: #782e22;
+  text-shadow: 0 0 4px #ff4545;
+}
 .vn-fx-bar-row-bottom {
   gap: 4px;
   align-items: center;

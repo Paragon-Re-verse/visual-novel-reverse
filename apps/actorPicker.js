@@ -1,4 +1,4 @@
-import { Constants as C, getSettings, getTags, getPortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData } from '../scripts/const.js';
+import { Constants as C, getSettings, getTags, getPortrait, getActivePortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData } from '../scripts/const.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { ActorPickerSub } from './actorPickerSub.js';
@@ -109,6 +109,9 @@ export class ActorPicker extends FormApplication {
         const settings = getSettings()
         const filterIsEmpty = filterText == "" && filterList.length == 0
         const generalFilterCat = game.i18n.localize(`${C.ID}.actorPicker.generarFilter`)
+        // Вынесено из reduce ниже - не зависит от текущего портрета, но пересчитывалось заново на
+        // каждый из них (O(портреты × токены на сцене) при каждом нажатии клавиши/чекбокса фильтра).
+        const sceneActorIds = canvas.tokens.placeables.map(t => t.actor?.id)
         const filteredIds = filterIsEmpty ? settings.portraits.map(p => p.id) : settings.portraits.reduce((acc, current) => {
             if (filterText && current.name.toLowerCase().includes(filterText.toLowerCase())) {
                 acc.push(current)
@@ -117,7 +120,7 @@ export class ActorPicker extends FormApplication {
                 // Тег портрета - это [Категория, Папка], поэтому и сравнивать нужно пару целиком
                 let filterTags = current.tag?.[1] ? [{ cat: current.tag[0] || "", name: current.tag[1] }] : []
                 // if (actor.type == "npc") filterTags.push({ cat: generalFilterCat, name: "НПС" })
-                if (canvas.tokens.placeables.map(t => t.actor?.id).includes(current?.id)) filterTags.push({ cat: generalFilterCat, name: game.i18n.localize(`${C.ID}.actorPicker.onScene`) })
+                if (sceneActorIds.includes(current?.id)) filterTags.push({ cat: generalFilterCat, name: game.i18n.localize(`${C.ID}.actorPicker.onScene`) })
                 if (filterList.every(sel => filterTags.some(tag => tag.cat === sel.cat && tag.name === sel.name))) acc.push(current)
             }
             return acc
@@ -720,7 +723,7 @@ Hooks.on("getActorPickerHeaderButtons", (app, buttons) => {
                 ui.notifications.error(game.i18n.localize(`${C.ID}.actorPicker.noPermissionImportExport`))
                 return
             }
-            new ActorFoldersManager().render(true)
+            ActorFoldersManager.open()
         }
     });
     buttons.unshift({

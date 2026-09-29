@@ -24,6 +24,20 @@ export class ActorFoldersManager extends FormApplication {
         return foundry.utils.mergeObject(defaults, overrides);
     }
 
+    // Тот же singleton-паттерн, что у ActorPicker.open()/LocationPicker.open() - без него повторный
+    // клик по кнопке "Manage Folders" (actorPicker.js) создавал ВТОРОЙ экземпляр этого окна поверх
+    // первого, оба с одинаковым id="ActorFoldersManager" (см. defaultOptions выше).
+    static open() {
+        if (!this.instance) {
+            this.instance = new ActorFoldersManager();
+        }
+        if (!this.instance.rendered) {
+            this.instance.render(true);
+        } else {
+            this.instance.bringToTop();
+        }
+    }
+
     getData(options) {
         const settings = getSettings()
         // Категория -> список Папок -> список Портретов, привязанных к каждой Папке (по имени, через tag: [catName, folderName])

@@ -110,8 +110,22 @@ export class PresetUIClass {
 
     static async deletePreset(id) {
         const settings = foundry.utils.deepClone(game.settings.get(C.ID, 'presetsUI'))
+        const deletedPreset = settings.presets.find(s => s.id == id)
         settings.presets = settings.presets.filter(s => s.id != id)
         await game.settings.set(C.ID, 'presetsUI', settings)
+
+        // Раскладка bar (позиция/масштаб) живёт здесь, в presetsUI (выше) - но содержимое (имя/
+        // цвет/значение) отдельно, в vnData.barsData (см. apps/effectsPanel.js). Удаление ОДНОГО
+        // bar (removeBar выше) это уже чистит - удаление целого пресета этого не делало, оставляя
+        // записи его bar в barsData навсегда без какого-либо интерфейса для их удаления оттуда.
+        const deletedBarIds = (deletedPreset?.bars || []).map(b => b.id)
+        if (deletedBarIds.length) {
+            const stillReferencedIds = new Set(settings.presets.flatMap(p => p.bars.map(b => b.id)))
+            const vnData = foundry.utils.deepClone(game.settings.get(C.ID, 'vnData'))
+            const before = vnData.barsData?.length || 0
+            vnData.barsData = (vnData.barsData || []).filter(b => !deletedBarIds.includes(b.id) || stillReferencedIds.has(b.id))
+            if (vnData.barsData.length !== before) await game.settings.set(C.ID, 'vnData', vnData)
+        }
     }
 
     static async setPreset(id) {

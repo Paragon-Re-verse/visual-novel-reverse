@@ -549,9 +549,13 @@ Hooks.on("ready", async () => {
         }
         // Ебля с настройкой "Использовать токены в качестве Портретов"
         if (game.settings.get(C.ID, "useTokenForPortraits")) {
-            const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
+            const autoPortraitSettings = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"))
             autoPortraitSettings.character.generalRules.useImage = "tokenImage"
             autoPortraitSettings.npc.generalRules.useImage = "tokenImage"
+            // Раньше здесь не было этой записи - изменения выше жили только в локальной переменной
+            // и терялись безвозвратно, а флаг useTokenForPortraits гасился всё равно, так что
+            // миграция срабатывает ровно один раз и должна была сохранять свой результат именно тут.
+            await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettings)
             await game.settings.set(C.ID, "useTokenForPortraits", false)
             console.log("\"Use token for portraits\" settings data migrated ✔")
         }
@@ -806,7 +810,13 @@ Hooks.on('setup', () => {
                 }
                 break;
             case "discordUsersIds":
-                if (game.user.isGM) await game.settings.set(C.ID, 'discordUsersIds', data);
+                // data = {userId, value} (не готовая карта целиком, см. updateDiscordUserIdSetting) -
+                // сливаем в АКТУАЛЬНОЕ значение настройки прямо здесь, а не доверяем уже устаревшему
+                // на момент получения объекту от клиента.
+                if (game.user.isGM) {
+                    const merged = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[data.userId]: data.value})
+                    await game.settings.set(C.ID, 'discordUsersIds', merged);
+                }
                 break;
             case "setSetting":
                 if (game.user.isGM) await game.settings.set(C.ID, key, data, options);
@@ -821,14 +831,20 @@ Hooks.on('setup', () => {
 // Пользователь изменяет настройку "Discord: Ваш ID/ник" -> меняем его в списке "Discord: список ID пользователей"
 async function updateDiscordUserIdSetting(value) {
     const userId = game.user.id
-    const newSetting = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[userId]: value})
     await game.user.setFlag(C.ID, 'discordUserId', value)
+    // Отправляем только пару userId->value, а не заранее слитую карту целиком - слияние происходит
+    // ниже (тут же для ГМа, в обработчике сокета case "discordUsersIds" для игрока) в момент самой
+    // записи, против АКТУАЛЬНОГО значения настройки. Раньше слияние делалось здесь, против локально
+    // закэшированной у отправителя копии карты - если два игрока меняли свой ID почти одновременно,
+    // presented позже готовый объект целиком перезатирал изменение первого (гонка чтение-правка-запись
+    // по сети).
     if (game.user.isGM) {
-        await game.settings.set(C.ID, 'discordUsersIds', newSetting);
+        const merged = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[userId]: value})
+        await game.settings.set(C.ID, 'discordUsersIds', merged);
     } else {
         game.socket.emit(`module.${C.ID}`, {
             type: 'discordUsersIds',
-            data: newSetting,
+            data: {userId, value},
         });
     }
     DiscordMenu._render(["troubleshooting"]);

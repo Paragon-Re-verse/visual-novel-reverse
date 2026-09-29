@@ -62,8 +62,13 @@ export class DiscordMenu extends HandlebarsApplicationMixin(ApplicationV2) {
 
     static getTroubles = async (connected = (C.MODULE().discordIntegration?.ws?.readyState === WebSocket.OPEN), speakers = Array.from(C.MODULE().discordIntegration?.voiceStates?.values() || []), isHost = false) => {
         let troubles = []
-        const tokenFile = await fetch(`modules/${C.ID}/bot/token.txt`).then(r => r.text())
-        if (!tokenFile) troubles.push("noToken")
+        // HEAD, а не GET/text() - файл раздаётся Foundry статикой ВСЕМ подключённым клиентам
+        // (GM и игрокам), т.к. это токен Discord-бота, а не публичные данные. GET читал бы сам
+        // токен в тело ответа и передавал его по сети каждому, кто откроет это меню - HEAD получает
+        // только заголовки (есть ли файл и его размер), содержимое токена по сети не уходит.
+        const tokenFileResponse = await fetch(`modules/${C.ID}/bot/token.txt`, { method: 'HEAD' }).catch(() => null)
+        const hasToken = !!tokenFileResponse?.ok && Number(tokenFileResponse.headers.get('content-length')) > 0
+        if (!hasToken) troubles.push("noToken")
         if (!connected && isHost) troubles.push("notConnected")
         if (!game.settings.get(C.ID, 'discordChannelId')) troubles.push("noChannelId")
         if (!(speakers.some(u => u.isOurBot)) && isHost) troubles.push("noBot")
