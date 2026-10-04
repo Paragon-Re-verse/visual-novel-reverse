@@ -50,7 +50,9 @@ export class ActorPicker extends FormApplication {
 
         let data = {
             highlightEl: settingData.editActiveSpeaker,
-            portraits: settingData.portraits || [],
+            // hasActor дополняется по факту наличия актёра: автосозданные Портреты раньше сохранялись с
+            // hasActor:false (баг getDefaultPortraitData) и оставались без кнопки "Открыть лист персонажа"
+            portraits: (settingData.portraits || []).map(portrait => ({...portrait, hasActor: portrait.hasActor || !!game.actors.get(portrait.id)})),
         }
         data.portraits.sort((a, b) => a.name.localeCompare(b.name))
 
@@ -111,20 +113,21 @@ export class ActorPicker extends FormApplication {
         const generalFilterCat = game.i18n.localize(`${C.ID}.actorPicker.generarFilter`)
         // Вынесено из reduce ниже - не зависит от текущего портрета, но пересчитывалось заново на
         // каждый из них (O(портреты × токены на сцене) при каждом нажатии клавиши/чекбокса фильтра).
-        const sceneActorIds = canvas.tokens.placeables.map(t => t.actor?.id)
-        const filteredIds = filterIsEmpty ? settings.portraits.map(p => p.id) : settings.portraits.reduce((acc, current) => {
-            if (filterText && current.name.toLowerCase().includes(filterText.toLowerCase())) {
-                acc.push(current)
-            }
-            if (filterList.length > 0) {
-                // Тег портрета - это [Категория, Папка], поэтому и сравнивать нужно пару целиком
-                let filterTags = current.tag?.[1] ? [{ cat: current.tag[0] || "", name: current.tag[1] }] : []
-                // if (actor.type == "npc") filterTags.push({ cat: generalFilterCat, name: "НПС" })
-                if (sceneActorIds.includes(current?.id)) filterTags.push({ cat: generalFilterCat, name: game.i18n.localize(`${C.ID}.actorPicker.onScene`) })
-                if (filterList.every(sel => filterTags.some(tag => tag.cat === sel.cat && tag.name === sel.name))) acc.push(current)
-            }
-            return acc
-        }, []).map(p => p.id)
+        // canvas.tokens отсутствует, пока canvas не готов (нет активной сцены / режим без canvas)
+        const sceneActorIds = (canvas.tokens?.placeables ?? []).map(t => t.actor?.id)
+        const npcFilterName = game.i18n.localize(`${C.ID}.actorPicker.npcFilter`)
+        const onSceneFilterName = game.i18n.localize(`${C.ID}.actorPicker.onScene`)
+        // Текст и отмеченные фильтры применяются вместе (И): раньше совпадение по имени показывало портрет,
+        // даже если он не проходил ни один из отмеченных фильтров
+        const filteredIds = filterIsEmpty ? settings.portraits.map(p => p.id) : settings.portraits.filter(current => {
+            if (filterText && !current.name.toLowerCase().includes(filterText.toLowerCase())) return false
+            if (!filterList.length) return true
+            // Тег портрета - это [Категория, Папка], поэтому и сравнивать нужно пару целиком
+            let filterTags = current.tag?.[1] ? [{ cat: current.tag[0] || "", name: current.tag[1] }] : []
+            if (game.actors.get(current?.id)?.type == "npc") filterTags.push({ cat: generalFilterCat, name: npcFilterName })
+            if (sceneActorIds.includes(current?.id)) filterTags.push({ cat: generalFilterCat, name: onSceneFilterName })
+            return filterList.every(sel => filterTags.some(tag => tag.cat === sel.cat && tag.name === sel.name))
+        }).map(p => p.id)
         html[0].querySelectorAll('.ac-actor-list li').forEach(element => {
             element.style = `display: ${filteredIds.includes(element.dataset.id) ? 'flex' : 'none'};`
         })
@@ -134,7 +137,8 @@ export class ActorPicker extends FormApplication {
         super.activateListeners(html);
         // Установка портрета на выбранный слот при клике ЛКМ
         html.find('.ac-actor-list li').on('click', async (event) => {
-            if (["ac-open-button", "ac-edit-button", "ac-delete-button"].includes(event.target.classList[0])) return
+            // closest, а не event.target: при клике по иконке <i> внутри кнопки target - сама иконка
+            if (event.target.closest(".ac-open-button, .ac-edit-button, .ac-delete-button")) return
             const actorData = getPortrait(event.currentTarget.dataset.id)
             if (actorData) {
                 const settings = foundry.utils.deepClone(game.settings.get(C.ID, 'vnData'))
@@ -346,7 +350,8 @@ export class ActorPicker extends FormApplication {
         if (event.target?.classList?.contains("vn-ac-slot") || event.target?.parentElement?.classList?.contains("vn-ac-slot")) {
             let renderParts = [`${event.target.dataset.pos}Portrait`]
             if (transferData.portraitSlot) {
-                settings.activeSpeakers[transferData.portraitSlot] = getPortrait(event.target.parentElement.dataset.id, settings) || null
+                // closest: drop может прийти и на <img>, и на сам div слота (мимо картинки)
+                settings.activeSpeakers[transferData.portraitSlot] = getPortrait(event.target.closest(".vn-ac-slot").dataset.id, settings) || null
                 renderParts.push(`${transferData.portraitSlot}Portrait`)
             }
             if (event.altKey) {
@@ -488,10 +493,7 @@ async function portraitAutoMaker(_actors = null, returnData = false, forceupdate
             settings.portraits.push(portraitData)
             updateData.push({name: portraitData.name, portrait: portraitData.img, type: type})
         }
-
-        console.log("Портрет создан")
     }
-    console.log("Завершение")
     if (returnData) {
         return {newSettings: settings, updateData: updateData}
     } else {
@@ -500,7 +502,14 @@ async function portraitAutoMaker(_actors = null, returnData = false, forceupdate
 }
 
 async function searchFiles(folderPath, deepSearch = false) {
-    const fpData = await FilePicker.browse("data", folderPath)
+    // Несуществующая/недоступная папка в одном фильтре не должна ронять весь автопоиск
+    let fpData
+    try {
+        fpData = await FilePicker.browse("data", folderPath)
+    } catch (error) {
+        console.warn(`${C.ID} | ${folderPath}:`, error)
+        return []
+    }
     let _files = fpData.files
     if (deepSearch) {
         for (const dir of fpData.dirs) {
@@ -510,20 +519,29 @@ async function searchFiles(folderPath, deepSearch = false) {
     return _files
 }
 
-function findMatchingFile(searchString, filePaths, variables, nameCompare) {
-    const regex = /\{(\w+)\}/g;
-    const processedSearchString = searchString.replace(regex, (match, varName) => {
-        return variables[varName] !== undefined ? variables[varName] : '.*';
-    });
-    
+export function findMatchingFile(searchString, filePaths, variables, nameCompare) {
+    // split с группой захвата: чётные элементы - буквальный текст, нечётные - имена переменных {varName}.
+    // {any} и неизвестные переменные - подстановка "что угодно". Раньше ".*" подставлялся строкой и
+    // сравнивался через ==/includes буквально, поэтому {any} не совпадал ни с чем.
+    const parts = searchString.split(/\{(\w+)\}/)
+    const isWildcard = (varName) => varName == "any" || variables[varName] === undefined
+    const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = parts.map((part, index) => {
+        if (index % 2 == 0) return escapeRegex(part)
+        return isWildcard(part) ? ".*" : escapeRegex(variables[part])
+    }).join("")
+    // Для "имя файла внутри строки" подстановка не имеет смысла - она просто выкидывается
+    const plainString = parts.map((part, index) => (index % 2 == 1 && isWildcard(part)) ? "" : (index % 2 == 1 ? variables[part] : part)).join("")
+
     return filePaths.find(filePath => {
-        const fileName = filePath.split('/').pop().split('.').shift();
+        // Отрезаем только последнее расширение: "Mr.Smith.webp" -> "Mr.Smith" (раньше было "Mr")
+        const fileName = filePath.split('/').pop().replace(/\.[^.]*$/, '');
         if (nameCompare === "equals") {
-            return processedSearchString == fileName;
+            return new RegExp(`^${pattern}$`).test(fileName);
         } else if (nameCompare === "inputInName") {
-            return fileName.includes(processedSearchString)
+            return new RegExp(pattern).test(fileName)
         } else if (nameCompare === "nameInInput") {
-            return processedSearchString.includes(fileName); 
+            return plainString.includes(fileName);
         }
     });
 }
@@ -753,6 +771,9 @@ Hooks.on("getActorPickerHeaderButtons", (app, buttons) => {
 });
 
 Hooks.on("updateActor", async (actor, update, changes, userId) => {
+    // Хук срабатывает на ВСЕХ клиентах - автосоздание выполняет только тот, кто изменил актёра,
+    // иначе каждый клиент слал свою копию vnData (дубли Портретов, затирание чужих правок)
+    if (userId !== game.user.id) return
     const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
     // const forcedChange = !!update.img || !!update.prototypeToken.texture.src || !!update.name || !!update.prototypeToken.name        (пока не используется)
     if (autoPortraitSettings[actor.type]?.generalRules.portraitAutoCreationRule == "actorCreateOrChange") portraitAutoMaker([actor])

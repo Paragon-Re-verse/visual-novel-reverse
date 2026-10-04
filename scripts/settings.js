@@ -1,4 +1,4 @@
-import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, selectorArray, defaultPortraitSettings, VNapp } from "./const.js";
+import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, VNapp } from "./const.js";
 import { VisualNovelDialogues } from "./main.js";
 import { VNLocation } from "./locationClass.js";
 import { addMenuSetting, vndSelectorMenu, RestoreFromBackup, CreateBackup, CustomSlidersSet, PlayersPermissions, ForcedSettingsMigration } from './settingsMenu.js';
@@ -504,7 +504,9 @@ Hooks.on("ready", async () => {
         console.log("——— VISUAL NOVEL DIALOGUES | Ready hook | Validating and updating settings | Start ———")
         // Обновляем playersPermissions
         const permSettings = game.settings.get(C.ID, "playersPermissions")
-        const mergedPermissions = foundry.utils.mergeObject(defaultPermissions, permSettings, {insertKeys: false})
+        // deepClone обязателен: mergeObject меняет target на месте, и без него константа defaultPermissions
+        // становилась копией прав мира - "Сбросить права по умолчанию" сбрасывало к текущим правам
+        const mergedPermissions = foundry.utils.mergeObject(foundry.utils.deepClone(defaultPermissions), permSettings, {insertKeys: false})
         await game.settings.set(C.ID, "playersPermissions", mergedPermissions)
         console.log("Players permissions updated ✔")
         // Обновляем vnData
@@ -670,7 +672,12 @@ function pushControlButtons(controls){
                 toggle: true,
                 active: getSettings().showVN,
                 order: 0,
-                onChange: () => { VisualNovelDialogues.toggleVN() }
+                // Foundry вызывает onChange(event, true) при выборе группы и onChange(event, false) при
+                // уходе из неё. Слепой toggleVN() на уходе заново открывал новеллу, закрытую хоткеем -
+                // поэтому переключаем только если запрошенное состояние отличается от текущего.
+                onChange: (event, active) => {
+                    if (active !== !!peekSetting("showVN")) VisualNovelDialogues.toggleVN()
+                }
             },
             hiddenOpenVN: {
                 name: "hiddenOpenVN",
@@ -836,7 +843,7 @@ async function updateDiscordUserIdSetting(value) {
     // ниже (тут же для ГМа, в обработчике сокета case "discordUsersIds" для игрока) в момент самой
     // записи, против АКТУАЛЬНОГО значения настройки. Раньше слияние делалось здесь, против локально
     // закэшированной у отправителя копии карты - если два игрока меняли свой ID почти одновременно,
-    // presented позже готовый объект целиком перезатирал изменение первого (гонка чтение-правка-запись
+    // присланный позже готовый объект целиком перезатирал изменение первого (гонка чтение-правка-запись
     // по сети).
     if (game.user.isGM) {
         const merged = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[userId]: value})
@@ -850,9 +857,3 @@ async function updateDiscordUserIdSetting(value) {
     DiscordMenu._render(["troubleshooting"]);
 }
 
-// Дискорд штуки
-Hooks.once('shutdown', async () => {
-    if (DiscordIntegration.instance) {
-        await DiscordIntegration.instance.shutdown();
-    }
-});

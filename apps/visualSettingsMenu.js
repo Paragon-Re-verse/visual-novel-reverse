@@ -817,7 +817,8 @@ export class VisualSettingsMenu extends FormApplication {
                             this.render(true)
                         }
                     } else if (key == "down") {
-                        const index = parseInt(button.dataset.index)
+                        // data-index - у строки варианта, а не у самой кнопки (как и в ветке "up")
+                        const index = parseInt(button.closest('.pms-autoSearch-item').dataset.index)
                         if (index < autoPortraitSettings[tab].searchConditions.length - 1) {
                             const temp = autoPortraitSettings[tab].searchConditions[index + 1]
                             autoPortraitSettings[tab].searchConditions[index + 1] = autoPortraitSettings[tab].searchConditions[index]

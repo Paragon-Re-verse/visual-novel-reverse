@@ -8,8 +8,8 @@ export class VNLocation {
         this.parentLocation = data.parentLocation || "???"
         this.backgroundImage = data.backgroundImage || C.backgroundPlaceholder()
         this.weather = data.weather || null
-        this.temperature = data.temperature || 20
-        this.knowTime = data.knowTime || true
+        this.temperature = data.temperature ?? 20
+        this.knowTime = data.knowTime ?? true
         this.locationTags = data.locationTags || []
         this.presets = data.presets || []
         this.scale = data.scale || 100

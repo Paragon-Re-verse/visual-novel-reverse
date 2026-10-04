@@ -34,7 +34,14 @@ export class ButtonsCustomizer extends HandlebarsApplicationMixin(ApplicationV2)
     }
 
     async _prepareContext(options) {
-        const buttonList = game.settings.get(C.ID, `buttonsList`).map(el => new DefaultButton(el))
+        // Иконки хранятся и как "fas fa-eye-slash", и как "fa-gear"/"fa-brands fa-discord" - стиль "fas"
+        // добавляем только если его нет (раньше шаблон делал "fas fa-{{icon}}" и получал "fa-fa-gear")
+        const hasIconStyle = (icon) => /(^|\s)(fa[srlbd]|fa-(solid|regular|light|thin|brands|duotone))(\s|$)/.test(icon)
+        const buttonList = game.settings.get(C.ID, `buttonsList`).map(el => {
+            const button = new DefaultButton(el)
+            button.iconClass = hasIconStyle(button.icon) ? button.icon : `fas ${button.icon}`
+            return button
+        })
         return { buttons: buttonList, dataActions: DefaultButton.getDataActionList() }
     }
 

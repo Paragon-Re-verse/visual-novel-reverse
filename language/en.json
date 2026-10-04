@@ -234,14 +234,16 @@
             "spriteNamePlaceholder": "Name",
             "spriteNameTooltip": "Sprite name (optional) - shown as a tooltip when hovering over it in the Visual Novel window",
             "folder-title": "Folder",
-            "noFolderOption": "No folder"
+            "noFolderOption": "No folder",
+            "selectImg": "Select image"
         },
         "restoreFromBackup": {
             "header": "Selected back-up file",
             "button": "Select file",
             "makeNewBackup": "Create a new backup file before restoring",
             "confirm": "Confirm",
-            "success": "The settings have been successfully restored from the backup file"
+            "success": "The settings have been successfully restored from the backup file",
+            "noFile": "No backup file selected"
         },
         "dialogue": {
             "cancel": "Cancel",
@@ -646,7 +648,9 @@
                 "hintnoBot": "Connect the bot to the voice channel using the 'Add bot' button above (the button may not work the first time)",
                 "noId": "No User ID specified",
                 "noIdHint": "The player must specify their User ID in the bottom left corner of the FoundryVTT interface or in the module settings"
-            }
+            },
+            "noChannelIdWarning": "Please specify the channel ID in the settings",
+            "connectFirstWarning": "Connect to the Discord Bridge first"
         },
         "buttonsCustomizer": {
             "openButton": "Buttons Customizer",
@@ -703,7 +707,8 @@
             "barTimerStart": "Start",
             "noBarsHint": "No bars in the current UI preset yet. Add one from the \"UI customization\" tile in the Visual Settings Menu.",
             "barColorLabel": "Color",
-            "barVisibilityToggle": "Show/hide this bar to players (permanent, independent of \"Always show bar\")"
+            "barVisibilityToggle": "Show/hide this bar to players (permanent, independent of \"Always show bar\")",
+            "lockExitWarning": "Exiting the novel is locked by the GM"
         },
         "dataActions": {
             "hideVN": "Toggle the Visual Novel window display",

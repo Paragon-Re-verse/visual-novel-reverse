@@ -714,7 +714,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             // ГМ может заблокировать личный выход игроков из новеллы (см. apps/effectsPanel.js) -
             // проверка та же, что и в _hideVN, т.к. это второй способ игрока скрыть VN лично для себя (хоткей "K")
             if (peekSetting("lockExit")) {
-                ui.notifications.warn("Выход из новеллы заблокирован Мастером")
+                ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.lockExitWarning`))
                 return
             }
             const hideVN = game.user.getFlag(C.ID, "hideVN") || false;
@@ -770,7 +770,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             // ГМ может заблокировать личный выход игроков из новеллы (см. apps/effectsPanel.js) -
             // на закрытие всей новеллы ГМом (ветка выше, allowTo("locationChanges")) это не влияет
             if (peekSetting("lockExit")) {
-                ui.notifications.warn("Выход из новеллы заблокирован Мастером")
+                ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.lockExitWarning`))
                 return
             }
             await game.user.setFlag(C.ID, "hideVN", !game.user.getFlag(C.ID, "hideVN"))
@@ -1490,9 +1490,11 @@ function playSound(reqLevel) {
 
 // Определение цвета для температуры
 const _getTemperatureColor = (temperature) => {
-    if (!temperature) {
+    // 0 °C - валидная температура (раньше !temperature отсекал её вместе с undefined/NaN)
+    if (temperature === null || temperature === undefined || temperature === "" || isNaN(Number(temperature))) {
         return "";
     }
+    temperature = Number(temperature)
     const colors = {
         color1: {red: 0, green: 15, blue: 115},
         color2: {red: 85, green: 255, blue: 0},
@@ -2175,19 +2177,6 @@ Hooks.on("closeCustomSlidersSet", () => {
     VisualNovelDialogues._render(["headerSlider", "leftSlider", "rightSlider"], null, true)
 })
 
-// Синхронизация с Advanced Requests (мне кажется что-то наебнулось)
-// При запуске мира, если синхронизация включена и модуль Advanced Requests активен, переносим заявки в VN из Advanced Requests
-Hooks.on("ready", async () => {
-    if (game.modules.get("advanced-requests")?.active && game.settings.get(C.ID, 'advancedRequestsSync')) {
-        const settings = getSettings()
-        settings.requests = game.settings.get("advanced-requests", "queue").reduce((acc, el) => {
-            const charId = game.users.get(el.id).character?.id || foundry.utils.randomID()
-            acc[charId] = el
-            return acc
-        }, {})
-    }
-})
-
 // Добавление поля id/ника Discord в меню User Configuration
 Hooks.on("renderUserConfig", (userConfig, element) => {
     const userId = userConfig.document.id
@@ -2210,8 +2199,10 @@ Hooks.on("renderUserConfig", (userConfig, element) => {
 })
 // При обновлении флага у игрока, меняем его в списке "Discord: список ID пользователей"
 Hooks.on("updateUser", async (user, changes) => {
-    if (!game.user.isGM || !changes.flags?.[C.ID]?.discordUserId) return
-    const disSetting = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {userId: user.id, discordId: changes.flags[C.ID].discordUserId})
+    const discordUserId = changes.flags?.[C.ID]?.discordUserId
+    if (!game.user.isGM || typeof discordUserId !== "string") return
+    // Карта discordUsersIds - {foundryUserId: discordId} (см. discordIntegration.js), а не {userId, discordId}
+    const disSetting = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[user.id]: discordUserId})
     await game.settings.set(C.ID, 'discordUsersIds', disSetting)
 })
 
@@ -2266,12 +2257,6 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
             return el
         })
         await quickSettingsUpdate({requests: newRequests}, {stopFuckingAround: true, renderData: {renderParts: ["foreground"]}})
-    }
-
-    // Пользователь изменяет настройку "Discord: Ваш ID/ник" -> меняем его в списке "Discord: список ID пользователей"
-    if (setting.key == `${C.ID}.discordUserId` && game.user.isGM) {
-        const disSetting = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUserId'), {userId: userId, discordId: setting.value})
-        await game.settings.set(C.ID, 'discordUsersIds', disSetting)
     }
 })
 

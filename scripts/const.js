@@ -82,7 +82,7 @@ export const getDefaultPortraitData = (actor = {}) => {
         offsetXl: 0,
         offsetXr: 0,
         offsetY: 0,
-        hasActor: !!Object.keys({}).length
+        hasActor: !!actor.id
     }
 }
 
@@ -189,7 +189,9 @@ export async function createBackup() {
         await FilePicker.createDirectory("data", `modules/${Constants.ID}/settingsBackups`)
     }
     const date = new Date()
-    const name = `settingsBackup-${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}-${date.getHours()}.${date.getMinutes()}.json`
+    // Ведущие нули + секунды: файлы сортируются по имени, а два бекапа в одну минуту не перезаписывают друг друга
+    const pad = (number) => String(number).padStart(2, "0")
+    const name = `settingsBackup-${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}-${pad(date.getHours())}.${pad(date.getMinutes())}.${pad(date.getSeconds())}.json`
     const newFile = new File([JSON.stringify(game.settings.get(Constants.ID, 'vnData'))], name, { type: "application/json" });
     await FilePicker.upload("data", `modules/${Constants.ID}/settingsBackups`, newFile, {}, {notify:false});
 }

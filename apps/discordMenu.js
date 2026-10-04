@@ -190,7 +190,9 @@ export class DiscordMenu extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     static async _updateUserId(event, target) {
         const value = target?.value || event?.target?.value;
-        await requestSettingsWithKeyUpdate('discordUserId', value)
+        // discordUserId - client-настройка: только локально. Через сокет у игрока её ставил бы ГМ себе же,
+        // перезаписывая собственный Discord ID
+        await game.settings.set(C.ID, 'discordUserId', value)
     }
     static async _updateNotifications(event, target) {
         await requestSettingsWithKeyUpdate('discordNotifications', target?.checked || event?.target?.checked)
@@ -215,7 +217,7 @@ export class DiscordMenu extends HandlebarsApplicationMixin(ApplicationV2) {
     static async _addBot(event, target) {
         const channelId = game.settings.get(C.ID, 'discordChannelId');
         if (!channelId) {
-            ui.notifications.warn("Пожалуйста, укажите ID канала в настройках");
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.discordMenu.noChannelIdWarning`));
             return;
         }
         
@@ -225,7 +227,7 @@ export class DiscordMenu extends HandlebarsApplicationMixin(ApplicationV2) {
                 channelId: channelId
             });
         } else {
-            ui.notifications.warn("Сначала подключитесь к Discord Bridge");
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.discordMenu.connectFirstWarning`));
         }
     }
 
@@ -235,7 +237,7 @@ export class DiscordMenu extends HandlebarsApplicationMixin(ApplicationV2) {
                 type: 'leaveVoice'
             });
         } else {
-            ui.notifications.warn("Сначала подключитесь к Discord Bridge");
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.discordMenu.connectFirstWarning`));
         }
     }
 
@@ -275,8 +277,11 @@ Hooks.on('updateUser', (user, changes) => {
     };
 });
 
-Hooks.on('updateSetting', (key, value) => {
-    if (["discordChannelId", "discordUserId", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordHighlightGM"].includes(key)) {
-        DiscordMenu._render(["settings", "troubleshooting"]);
+// Хук получает документ Setting (ключ вида "<id модуля>.<настройка>"), а не голую строку - раньше условие
+// никогда не срабатывало. Перерисовываем только troubleshooting: ре-рендер части settings сбивал бы фокус
+// при переходе между полями этой же формы
+Hooks.on('updateSetting', (setting) => {
+    if (["discordChannelId", "discordUserId", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordHighlightGM"].some(key => setting.key === `${C.ID}.${key}`)) {
+        DiscordMenu._render(["troubleshooting"]);
     }
 });
