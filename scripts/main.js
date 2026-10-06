@@ -933,7 +933,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
     }
     static _effectsWindow(event, target) {
         if (!game.user.isGM) return
-        new EffectsPanel().render(true)
+        EffectsPanel.open()
     }
     static _mainGuideHint(event, target) {
         new Dialog({

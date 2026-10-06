@@ -18,6 +18,79 @@ import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitF
 export class EffectsPanel extends FormApplication {
     static instance = null
 
+    // Одно окно на клиента: повторный клик по кнопке поднимает уже открытое, а Hooks.on("updateSetting")
+    // ниже знает, какое окно обновлять
+    static open() {
+        if (!EffectsPanel.instance) EffectsPanel.instance = new EffectsPanel()
+        if (EffectsPanel.instance.rendered) {
+            EffectsPanel.instance.bringToTop()
+        } else {
+            EffectsPanel.instance.render(true)
+        }
+        return EffectsPanel.instance
+    }
+
+    async close(options) {
+        if (EffectsPanel.instance === this) EffectsPanel.instance = null
+        return super.close(options)
+    }
+
+    // Живое обновление списков персонажей и подсветки фильтров без полной перерисовки окна
+    // (полная перерисовка сбивала бы фокус/ввод в полях шкал). Только чтение vnData - без deepClone.
+    refreshLiveState() {
+        if (!this.rendered || !this.element?.length) return
+        this._syncLiveState(this.element)
+    }
+
+    _syncLiveState(html) {
+        const liveData = {
+            activeSpeakers: peekSetting("activeSpeakers") || {},
+            activeSlots: peekSetting("activeSlots") || {},
+        }
+        this._syncTargetSelect(html[0].querySelector('.vn-fx-target-select'), this._getActiveTargets(liveData))
+        const filterSelect = html[0].querySelector('.vn-fx-pfilter-target')
+        const filterTargetAfterSync = this._syncTargetSelect(filterSelect, this._getStageTargets(liveData))
+        if (filterTargetAfterSync !== undefined) this.filterTarget = filterTargetAfterSync
+        this._refreshFilterButtons(html, liveData)
+        // Переключатели тоже сверяются с фактическими данными (их меняют и другие места - напр. закрытие
+        // панели выключает "режим ряда"), а не только с последним кликом в этом окне
+        Object.entries(EffectsPanel.TOGGLE_SETTINGS).forEach(([selector, settingKey]) => {
+            html[0].querySelector(selector)?.classList.toggle('vn-fx-active', !!peekSetting(settingKey))
+        })
+    }
+
+    static TOGGLE_SETTINGS = {
+        '.vn-fx-toggle-darken': 'darkenBack',
+        '.vn-fx-toggle-row': 'rowMode',
+        '.vn-fx-bgscroll-toggle': 'bgScroll',
+        '.vn-fx-blur-toggle': 'bgBlur',
+        '.vn-fx-toggle-lockexit': 'lockExit',
+    }
+
+    // Перестраивает <option> выпадающего списка (кроме первого - "все"), только если состав изменился.
+    // Если выбранный персонаж ушёл со сцены - выбор возвращается на "все". Возвращает итоговое значение.
+    _syncTargetSelect(selectElement, targets) {
+        if (!selectElement) return undefined
+        const targetsKey = targets.map(target => `${target.pos}:${target.name}`).join("|")
+        if (selectElement.dataset.targetsKey === targetsKey) return selectElement.value
+        selectElement.dataset.targetsKey = targetsKey
+        const previousValue = selectElement.value
+        Array.from(selectElement.options).slice(1).forEach(optionElement => optionElement.remove())
+        targets.forEach(target => {
+            const optionElement = document.createElement('option')
+            optionElement.value = target.pos
+            // textContent, а не innerHTML - имя персонажа вводит пользователь
+            optionElement.textContent = target.name
+            selectElement.appendChild(optionElement)
+        })
+        if (targets.some(target => target.pos === previousValue)) {
+            selectElement.value = previousValue
+        } else {
+            selectElement.value = "all"
+        }
+        return selectElement.value
+    }
+
     static get defaultOptions() {
         const defaults = super.defaultOptions;
         const overrides = {
@@ -117,7 +190,7 @@ export class EffectsPanel extends FormApplication {
     }
 
     // Кнопка фильтра подсвечена, если фильтр есть у КАЖДОЙ цели (для "всех на сцене" - у всех сразу)
-    _refreshFilterButtons(html, settingData = getSettings()) {
+    _refreshFilterButtons(html, settingData = { activeSpeakers: peekSetting("activeSpeakers") || {} }) {
         const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
         html[0].querySelectorAll('.vn-fx-pfilter').forEach(buttonElement => {
             const filterId = buttonElement.dataset.filter
@@ -136,8 +209,9 @@ export class EffectsPanel extends FormApplication {
             return
         }
         updateFilters(speakers)
+        // Подсветка сразу, не дожидаясь круга до сервера и перерисовки VN-окна
+        this._refreshFilterButtons(html, settingData)
         await requestSettingsUpdate(settingData)
-        this._refreshFilterButtons(html)
     }
 
     _getSelectedTarget(html) {
@@ -166,8 +240,9 @@ export class EffectsPanel extends FormApplication {
         // --- Затемнение фона (переключатель, синхронизируется всем игрокам через настройки) ---
         html.find('.vn-fx-toggle-darken').on('click', async (event) => {
             event.preventDefault()
-            await quickSettingsUpdate({ darkenBack: !peekSetting("darkenBack") }, { renderData: { renderParts: ["foreground"] } })
-            event.currentTarget.classList.toggle('vn-fx-active', !!getSettings().darkenBack)
+            const next = !peekSetting("darkenBack")
+            event.currentTarget.classList.toggle('vn-fx-active', next)
+            await quickSettingsUpdate({ darkenBack: next }, { renderData: { renderParts: ["foreground"] } })
         })
 
         // --- Режим ряда (переключатель) ---
@@ -177,12 +252,12 @@ export class EffectsPanel extends FormApplication {
             // При включении режима ряда прячем обычный интерфейс (как обычная кнопка "Скрыть интерфейс")
             // и заодно включаем затемнение фона - при выключении оба возвращаются обратно.
             // (Если нужно "затемнение само по себе" без режима ряда - для этого отдельная кнопка выше.)
+            event.currentTarget.classList.toggle('vn-fx-active', turningOn)
+            html[0].querySelector('.vn-fx-toggle-darken')?.classList.toggle('vn-fx-active', turningOn)
             await quickSettingsUpdate(
                 { rowMode: turningOn, hideUI: turningOn, darkenBack: turningOn },
                 { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider", "foreground"] } }
             )
-            event.currentTarget.classList.toggle('vn-fx-active', turningOn)
-            html[0].querySelector('.vn-fx-toggle-darken')?.classList.toggle('vn-fx-active', turningOn)
         })
 
         // --- Медленная прокрутка фона (один переключатель вкл/выкл, общий для всех игроков.
@@ -191,8 +266,8 @@ export class EffectsPanel extends FormApplication {
         html.find('.vn-fx-bgscroll-toggle').on('click', async (event) => {
             event.preventDefault()
             const next = !peekSetting("bgScroll")
-            await quickSettingsUpdate({ bgScroll: next }, { renderData: { renderParts: ["background"] } })
             event.currentTarget.classList.toggle('vn-fx-active', next)
+            await quickSettingsUpdate({ bgScroll: next }, { renderData: { renderParts: ["background"] } })
         })
 
         // --- Размытие фона (переключатель вкл/выкл, общий для всех игроков. Сила размытия берётся из
@@ -205,8 +280,8 @@ export class EffectsPanel extends FormApplication {
         html.find('.vn-fx-blur-toggle').on('click', async (event) => {
             event.preventDefault()
             const next = !peekSetting("bgBlur")
-            await quickSettingsUpdate({ bgBlur: next })
             event.currentTarget.classList.toggle('vn-fx-active', next)
+            await quickSettingsUpdate({ bgBlur: next })
         })
 
         // --- Нарратив (одноразовая полноэкранная текстовая вставка - ГМ пишет текст в диалоге,
@@ -230,12 +305,13 @@ export class EffectsPanel extends FormApplication {
         // --- Блокировка личного выхода игроков из новеллы (переключатель) ---
         html.find('.vn-fx-toggle-lockexit').on('click', async (event) => {
             event.preventDefault()
-            await quickSettingsUpdate({ lockExit: !peekSetting("lockExit") }, { renderData: { renderParts: ["foreground"] } })
-            event.currentTarget.classList.toggle('vn-fx-active', !!getSettings().lockExit)
+            const next = !peekSetting("lockExit")
+            event.currentTarget.classList.toggle('vn-fx-active', next)
+            await quickSettingsUpdate({ lockExit: next }, { renderData: { renderParts: ["foreground"] } })
         })
 
         // --- Фильтры портретов (кровь, грязь, затемнение и т.д., scripts/portraitFilters.js) ---
-        this._refreshFilterButtons(html)
+        this._syncLiveState(html)
         html.find('.vn-fx-pfilter-target').on('change', (event) => {
             this.filterTarget = event.currentTarget.value
             this._refreshFilterButtons(html)
@@ -313,10 +389,14 @@ export class EffectsPanel extends FormApplication {
             // поле значения/цвета/имени.
             const visibilityToggle = rowEl.querySelector('.vn-fx-bar-visibility-toggle')
             visibilityToggle?.addEventListener('click', async () => {
-                const settingData = getSettings()
-                const current = (settingData.barsData || []).find(b => b.id === barId)
-                await upsertBar({ visible: !current?.visible }, { preview: false })
-                this.render()
+                const current = (peekSetting("barsData") || []).find(b => b.id === barId)
+                const nextVisible = !current?.visible
+                // Только кнопка и иконка - полная перерисовка окна на каждый клик была заметной задержкой
+                visibilityToggle.classList.toggle('vn-fx-active', nextVisible)
+                const iconElement = visibilityToggle.querySelector('i')
+                iconElement?.classList.toggle('fa-eye', nextVisible)
+                iconElement?.classList.toggle('fa-eye-slash', !nextVisible)
+                await upsertBar({ visible: nextVisible }, { preview: false })
             })
 
             rowEl.querySelector('[data-key="name"]')?.addEventListener('change', (event) => {
@@ -367,3 +447,10 @@ export class EffectsPanel extends FormApplication {
     async _updateObject(event, formData) {
     }
 }
+
+// Списки персонажей и подсветка в открытой панели следят за каждым изменением сцены (раньше обновлялись
+// только при повторном открытии окна). presetsUI - смена пресета меняет число слотов на сцене.
+Hooks.on("updateSetting", (setting) => {
+    if (setting.key !== `${C.ID}.vnData` && setting.key !== `${C.ID}.presetsUI`) return
+    EffectsPanel.instance?.refreshLiveState()
+})

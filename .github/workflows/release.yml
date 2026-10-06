@@ -1,13 +1,24 @@
 name: Release
 
-# Собирает zip модуля и публикует GitHub Release при пуше тега vX.Y.Z.
+# Собирает zip модуля и прикладывает его к GitHub Release.
 # module.json.download (releases/latest/download/<id>.zip) и .manifest (raw
 # module.json на main) рассчитаны именно на этот workflow.
+#
+# Работает при любом способе выпуска:
+# - релиз создан в браузере ("Draft a new release" -> новый тег): срабатывают и push тега,
+#   и release:published - оба запуска выстраиваются в очередь (concurrency), архив
+#   прикладывается к уже существующему релизу;
+# - релиз создан в браузере на УЖЕ существующем теге: push тега нет, срабатывает только
+#   release:published;
+# - тег запушен из терминала: релиза ещё нет - workflow создаёт его сам;
+# - ручной запуск (workflow_dispatch) для существующего тега.
 
 on:
   push:
     tags:
       - "v*.*.*"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -17,18 +28,37 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: refs/tags/${{ env.TAG }}
 
-      - name: Read module id
+      - name: Read module id and version
         id: module
-        run: echo "id=$(jq -r '.id' module.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "id=$(jq -r '.id' module.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r '.version' module.json)" >> "$GITHUB_OUTPUT"
+
+      # Тег на коммите с другой версией в module.json = Foundry показывает старую версию
+      # и бесконечно предлагает обновление. Лучше упасть с понятной ошибкой.
+      - name: Check that module.json version matches the tag
+        env:
+          VERSION: ${{ steps.module.outputs.version }}
+        run: |
+          if [ "v$VERSION" != "$TAG" ] && [ "$VERSION" != "$TAG" ]; then
+            echo "::error title=Version mismatch::module.json says $VERSION, but the release tag is $TAG. Update the version in module.json on main first, then create the release (tag) on that new commit."
+            exit 1
+          fi
 
       - name: Build module zip
         env:
@@ -39,9 +69,22 @@ jobs:
             ./ "build/$MODULE_ID/"
           (cd build && zip -r "../$MODULE_ID.zip" "$MODULE_ID")
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: ${{ steps.module.outputs.id }}.zip
-          generate_release_notes: true
+      # gh вместо softprops/action-gh-release: тот на релизах, созданных в браузере, падал по тайм-ауту
+      # на обновлении существующего релиза. Здесь существующий релиз не редактируется - к нему только
+      # прикладывается архив (--clobber заменяет файл с тем же именем при повторном запуске).
+      - name: Attach zip to the release (create the release if it does not exist)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ZIP: ${{ steps.module.outputs.id }}.zip
+        run: |
+          for attempt in 1 2 3; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "$ZIP" --clobber && exit 0
+            elif gh release create "$TAG" "$ZIP" --verify-tag --generate-notes --title "$TAG"; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          exit 1

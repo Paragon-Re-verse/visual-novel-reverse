@@ -41,29 +41,50 @@ export function buildPortraitFilterCss(filters) {
     return cssParts.join(" ")
 }
 
+// Текстурные фильтры (кровь, грязь) - шум feTurbulence. Считать его на лету дорого: браузер пересчитывает
+// шум по каждому пикселю при КАЖДОЙ перерисовке портрета (анимация появления, переход фильтра, окно поверх
+// портрета). Замер в Chromium (14 портретов, панель тащат поверх): живой шум - до 150 мс на кадр при
+// переключении фильтра и ~30 fps при перетаскивании; запечённый тайл - не дороже портретов без фильтров.
+// Поэтому шум один раз "запекается" в бесшовный тайл 512x512 (canvas + тот же фильтр с stitchTiles), а
+// фильтр портрета только размножает картинку (feTile) и обрезает её по альфе персонажа.
+// Живые фильтры ниже - запасной вариант, если браузер не умеет canvas.filter = "url(#...)".
+const TEXTURE_TILE_SIZE = 512
+
+// Генераторы тайлов: те же цвета/пороги, что у живых фильтров; частоты кратны 1/512 - иначе тайл не бесшовный
+const TEXTURE_GENERATORS = {
+    dirt: `
+      <feTurbulence type="fractalNoise" baseFrequency="0.0078125 0.01171875" numOctaves="4" seed="4" stitchTiles="stitch" result="smudgeNoise"/>
+      <feColorMatrix in="smudgeNoise" type="matrix" values="0 0 0 0 0.27  0 0 0 0 0.19  0 0 0 0 0.10  3.4 0 0 0 -1.5" result="smudge"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.08984375" numOctaves="2" seed="9" stitchTiles="stitch" result="speckNoise"/>
+      <feColorMatrix in="speckNoise" type="matrix" values="0 0 0 0 0.16  0 0 0 0 0.11  0 0 0 0 0.06  14 0 0 0 -9.1" result="speck"/>
+      <feMerge><feMergeNode in="smudge"/><feMergeNode in="speck"/></feMerge>`,
+    blood: `
+      <feTurbulence type="fractalNoise" baseFrequency="0.015625 0.009765625" numOctaves="3" seed="21" stitchTiles="stitch" result="splatNoise"/>
+      <feColorMatrix in="splatNoise" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.02  0 0 0 0 0.03  0 -11 0 0 4.35" result="splat"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.05859375" numOctaves="2" seed="13" stitchTiles="stitch" result="dropNoise"/>
+      <feColorMatrix in="dropNoise" type="matrix" values="0 0 0 0 0.30  0 0 0 0 0.01  0 0 0 0 0.02  0 0 -20 0 7.3" result="drops"/>
+      <feMerge><feMergeNode in="splat"/><feMergeNode in="drops"/></feMerge>`,
+}
+
 // Область фильтра с запасом -50%/200%: <img> внутри .vn-portrait может выходить за её рамки
 // (масштаб и смещения портрета), а SVG-фильтр обрезает всё за пределами своей области.
+const PORTRAIT_FILTER_REGION = `x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"`
+const MASK_TEXTURE_TO_PORTRAIT = `
+      <feComposite in="texture" in2="SourceAlpha" operator="in" result="textureMasked"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="textureMasked"/></feMerge>`
+
+// Живой (запасной) вариант: генератор с исходными частотами без stitchTiles + та же обрезка по альфе
+const LIVE_TEXTURE_FILTERS = {
+    dirt: TEXTURE_GENERATORS.dirt.replace(`baseFrequency="0.0078125 0.01171875"`, `baseFrequency="0.008 0.012"`).replace(`baseFrequency="0.08984375"`, `baseFrequency="0.09"`),
+    blood: TEXTURE_GENERATORS.blood.replace(`baseFrequency="0.015625 0.009765625"`, `baseFrequency="0.016 0.009"`).replace(`baseFrequency="0.05859375"`, `baseFrequency="0.06"`),
+}
+const asTexture = (primitives) => primitives.replace(/<feMerge>(?![\s\S]*<feMerge>)/, `<feMerge result="texture">`)
+
 const SVG_FILTER_DEFS = `
 <svg id="vn-portrait-filter-defs" xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
   <defs>
-    <filter id="vn-pf-dirt" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
-      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="4" seed="4" result="smudgeNoise"/>
-      <feColorMatrix in="smudgeNoise" type="matrix" values="0 0 0 0 0.27  0 0 0 0 0.19  0 0 0 0 0.10  3.4 0 0 0 -1.5" result="smudge"/>
-      <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="9" result="speckNoise"/>
-      <feColorMatrix in="speckNoise" type="matrix" values="0 0 0 0 0.16  0 0 0 0 0.11  0 0 0 0 0.06  14 0 0 0 -9.1" result="speck"/>
-      <feMerge result="grime"><feMergeNode in="smudge"/><feMergeNode in="speck"/></feMerge>
-      <feComposite in="grime" in2="SourceAlpha" operator="in" result="grimeMasked"/>
-      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="grimeMasked"/></feMerge>
-    </filter>
-    <filter id="vn-pf-blood" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
-      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.009" numOctaves="3" seed="21" result="splatNoise"/>
-      <feColorMatrix in="splatNoise" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.02  0 0 0 0 0.03  0 -11 0 0 4.35" result="splat"/>
-      <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="dropNoise"/>
-      <feColorMatrix in="dropNoise" type="matrix" values="0 0 0 0 0.30  0 0 0 0 0.01  0 0 0 0 0.02  0 0 -20 0 7.3" result="drops"/>
-      <feMerge result="blood"><feMergeNode in="splat"/><feMergeNode in="drops"/></feMerge>
-      <feComposite in="blood" in2="SourceAlpha" operator="in" result="bloodMasked"/>
-      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="bloodMasked"/></feMerge>
-    </filter>
+    ${Object.entries(TEXTURE_GENERATORS).map(([id, primitives]) => `<filter id="vn-pf-gen-${id}" x="0" y="0" width="${TEXTURE_TILE_SIZE}" height="${TEXTURE_TILE_SIZE}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${primitives}</filter>`).join("")}
+    ${Object.entries(LIVE_TEXTURE_FILTERS).map(([id, primitives]) => `<filter id="vn-pf-${id}" ${PORTRAIT_FILTER_REGION}>${asTexture(primitives)}${MASK_TEXTURE_TO_PORTRAIT}</filter>`).join("")}
   </defs>
 </svg>`
 
@@ -72,15 +93,67 @@ export function ensurePortraitFilterDefs() {
     document.body.insertAdjacentHTML("beforeend", SVG_FILTER_DEFS)
 }
 
+// null - браузер не поддерживает canvas.filter со ссылкой на SVG-фильтр (остаётся живой фильтр)
+function bakeTextureTile(generatorFilterId) {
+    const canvas = document.createElement("canvas")
+    canvas.width = TEXTURE_TILE_SIZE
+    canvas.height = TEXTURE_TILE_SIZE
+    const context = canvas.getContext("2d")
+    if (!context || !("filter" in context)) return null
+    context.filter = `url(#${generatorFilterId})`
+    if (!context.filter || context.filter === "none") return null
+    context.fillRect(0, 0, TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE)
+    // Если фильтр молча не применился, вместо полупрозрачной текстуры будет сплошной чёрный квадрат
+    const pixels = context.getImageData(0, 0, TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE).data
+    let hasTransparency = false
+    for (let index = 3; index < pixels.length; index += 4 * 97) {
+        if (pixels[index] < 255) {
+            hasTransparency = true
+            break
+        }
+    }
+    if (!hasTransparency) return null
+    return canvas.toDataURL("image/png")
+}
+
+const bakedTextures = new Set()
+function ensureBakedTexture(id) {
+    if (bakedTextures.has(id)) return
+    bakedTextures.add(id)
+    try {
+        const tileUrl = bakeTextureTile(`vn-pf-gen-${id}`)
+        if (!tileUrl) return
+        document.getElementById(`vn-pf-${id}`).innerHTML = `
+      <feImage href="${tileUrl}" x="0" y="0" width="${TEXTURE_TILE_SIZE}" height="${TEXTURE_TILE_SIZE}" preserveAspectRatio="none" result="tile"/>
+      <feTile in="tile" result="texture"/>${MASK_TEXTURE_TO_PORTRAIT}`
+    } catch (error) {
+        console.warn(`visual-novel-reverse | portrait filter "${id}" stays live (texture bake failed):`, error)
+    }
+}
+
+// Запись в style.filter только при реальном изменении - иначе каждое обновление vnData заново
+// инвалидировало бы стили всех портретов. Сравниваем с data-атрибутом, а не со style.filter:
+// браузер нормализует прочитанное значение (url(#id) -> url("#id")), и оно никогда не совпало бы.
+function setFilterIfChanged(element, filterCss) {
+    if (element.dataset.vnFilter === filterCss) return
+    element.dataset.vnFilter = filterCss
+    element.style.filter = filterCss
+}
+
 // Применяет фильтры к УЖЕ СУЩЕСТВУЮЩИМ узлам - вызывается из _onRender и из Hooks.on("updateSetting")
 // (переключение фильтра в панели не просит перерисовку портретов, чтобы не перезапускать их анимацию появления)
 export function applyPortraitFilters(settingData) {
     ensurePortraitFilterDefs()
     const activeSpeakers = settingData?.activeSpeakers || {}
+    Object.values(activeSpeakers).forEach(speaker => {
+        normalizePortraitFilters(speaker?.filters).forEach(id => {
+            if (TEXTURE_GENERATORS[id]) ensureBakedTexture(id)
+        })
+    })
     document.querySelectorAll("#vn-body .vn-portrait").forEach(portraitElement => {
         const position = portraitElement.closest(".vn-pBody")?.dataset.pos
         if (!position) return
-        portraitElement.style.filter = buildPortraitFilterCss(activeSpeakers[position]?.filters)
+        setFilterIfChanged(portraitElement, buildPortraitFilterCss(activeSpeakers[position]?.filters))
     })
     // "Режим ряда" рисует собственные <img> (main.js _updateRowLayer) - им тоже нужны фильтры их слота.
     // У этих <img> уже есть CSS-тень (#vn-fx-row-layer img в _injectEffectStyles) - inline filter её
@@ -88,9 +161,9 @@ export function applyPortraitFilters(settingData) {
     document.querySelectorAll("#vn-fx-row-layer img[data-pos]").forEach(rowImageElement => {
         const filterCss = buildPortraitFilterCss(activeSpeakers[rowImageElement.dataset.pos]?.filters)
         if (filterCss) {
-            rowImageElement.style.filter = `${filterCss} ${ROW_LAYER_SHADOW}`
+            setFilterIfChanged(rowImageElement, `${filterCss} ${ROW_LAYER_SHADOW}`)
         } else {
-            rowImageElement.style.filter = ""
+            setFilterIfChanged(rowImageElement, "")
         }
     })
 }
