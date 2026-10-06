@@ -1,4 +1,4 @@
-import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, VNapp } from "./const.js";
+import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, getDefaultPortraitSettingsForType, VNapp } from "./const.js";
 import { VisualNovelDialogues } from "./main.js";
 import { VNLocation } from "./locationClass.js";
 import { addMenuSetting, vndSelectorMenu, RestoreFromBackup, CreateBackup, CustomSlidersSet, PlayersPermissions, ForcedSettingsMigration } from './settingsMenu.js';
@@ -190,7 +190,7 @@ Hooks.once('init', function() {
     // Смещение всех портретов по оси Y
     registerSettings("worldOffsetY", "world", false, Number, 0, null, true)
     // Количество слотов окна VN (на одной стороне)
-    registerSettings("slotCount", "world", false, Number, 4, null, true, null, {min: 1, max: 5, step: 1}) // по умолчанию
+    registerSettings("slotCount", "world", false, Number, 4, null, true, null, {min: 1, max: C.maxSlotCount, step: 1}) // по умолчанию
     // z-index окна
     registerSettings("zIndex", "world", false, Number, 90, null, true) // по умолчанию
     // Скорость (длительность, в секундах) вспышки света/тьмы - панель "Эффекты" (apps/effectsPanel.js),
@@ -560,6 +560,16 @@ Hooks.on("ready", async () => {
             await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettings)
             await game.settings.set(C.ID, "useTokenForPortraits", false)
             console.log("\"Use token for portraits\" settings data migrated ✔")
+        }
+        // Настройки автосоздания Портретов есть по умолчанию только для "character" и "npc" (dnd5e).
+        // Типы актёров других систем (например "other" в Powered by the Apocalypse) без записи здесь
+        // молча пропускались автосозданием, а их вкладка в меню автосоздания падала на undefined.
+        const autoPortraitSettingsForTypes = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"))
+        const actorTypesWithoutSettings = Actor.TYPES.filter(type => type != "base" && !autoPortraitSettingsForTypes[type])
+        if (actorTypesWithoutSettings.length) {
+            actorTypesWithoutSettings.forEach(type => { autoPortraitSettingsForTypes[type] = getDefaultPortraitSettingsForType() })
+            await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettingsForTypes)
+            console.log(`Auto portrait settings added for actor types: ${actorTypesWithoutSettings.join(", ")} ✔`)
         }
 
         // Чек штуковин

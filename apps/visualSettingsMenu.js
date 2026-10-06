@@ -68,7 +68,7 @@ export class VisualSettingsMenu extends FormApplication {
             // (NaN, отрицательное, дробное, за пределами задокументированного максимума "до 5") -
             // без приведения к числу и клампа Array.slice(0, slotCount) даёт неожиданные результаты
             // (например отрицательное число отсчитывает слоты с конца массива nums)
-            const clampedSlotCount = Math.min(5, Math.max(1, Math.trunc(Number(slotCount)) || 1))
+            const clampedSlotCount = Math.min(C.maxSlotCount, Math.max(1, Math.trunc(Number(slotCount)) || 1))
             const nums = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].slice(0, clampedSlotCount)
             return nums.reduce((acc, el, i) => {
                 acc.push({
@@ -100,6 +100,7 @@ export class VisualSettingsMenu extends FormApplication {
 
         const data = {
             slotCountPlaceholder: defaultSlotCount,
+            maxSlotCount: C.maxSlotCount,
             editblePresetId: this.editablePreset,
             choodedPresetId: activePresetId || null,
             activePreset,
@@ -427,7 +428,7 @@ export class VisualSettingsMenu extends FormApplication {
 
                     acc[parts[0]][parts[1]] =
                         parts[0] == "activeElements" ? el.checked :
-                        parts[0] == "slotCount" ? Math.min(5, Math.max(1, Math.trunc(Number(el.value)) || 1)) :
+                        parts[0] == "slotCount" ? Math.min(C.maxSlotCount, Math.max(1, Math.trunc(Number(el.value)) || 1)) :
                         el.value
 
                     return acc

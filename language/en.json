@@ -708,7 +708,11 @@
             "noBarsHint": "No bars in the current UI preset yet. Add one from the \"UI customization\" tile in the Visual Settings Menu.",
             "barColorLabel": "Color",
             "barVisibilityToggle": "Show/hide this bar to players (permanent, independent of \"Always show bar\")",
-            "lockExitWarning": "Exiting the novel is locked by the GM"
+            "lockExitWarning": "Exiting the novel is locked by the GM",
+            "portraitFiltersTitle": "Portrait filters",
+            "allCharactersOnStage": "All characters on stage",
+            "clearFilters": "Clear filters",
+            "noFilterTargets": "There are no characters on stage to apply a filter to"
         },
         "dataActions": {
             "hideVN": "Toggle the Visual Novel window display",
@@ -730,6 +734,19 @@
             "effectsWindow": "Open the visual effects panel",
             "deletePortraitFromOrder": "Remove this portrait from the active queue (right-click)",
             "requestClick": "Accept or dismiss a request (left/right-click)"
+        },
+        "portraitFilters": {
+            "dirt": "Dirt",
+            "blood": "Blood",
+            "poison": "Poisoned",
+            "frozen": "Frozen",
+            "sepia": "Memory (sepia)",
+            "grayscale": "Grayscale",
+            "darken": "Darken",
+            "silhouette": "Silhouette",
+            "blur": "Blur",
+            "ghost": "Ghost",
+            "glow": "Glow"
         }
     }
 }

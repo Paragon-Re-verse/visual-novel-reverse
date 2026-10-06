@@ -11,7 +11,9 @@ export const Constants = {
     rightSlider: "modules/visual-novel-reverse/templates/assets/right-slide-top.webp",
     leftSliderBack: "modules/visual-novel-reverse/templates/assets/left-slide-back.webp",
     rightSliderBack: "modules/visual-novel-reverse/templates/assets/right-slide-back.webp",
-    numArray: ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
+    numArray: ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"],
+    // Максимум актёров на одну сторону VN-окна (numArray и PARTS рассчитаны на 10, ограничение - только UI/валидация)
+    maxSlotCount: 7
 }
 
 export const VNapp = () => Constants.MODULE().app
@@ -349,3 +351,8 @@ export const defaultPortraitSettings = {
     character: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate },
     npc: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate }
 }
+// Для типов актёров, которых нет в defaultPortraitSettings (например "other" в Powered by the Apocalypse)
+export const getDefaultPortraitSettingsForType = () => ({
+    searchConditions: [{ ...defaultPortraitSettingsTemplate }],
+    generalRules: { ...generalRulesTemplate },
+})

@@ -55,6 +55,25 @@
                 </button>
             </div>
 
+            <hr/>
+
+            <div class="vn-fx-section">
+                <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.portraitFiltersTitle"}}</label>
+                <select class="vn-fx-pfilter-target">
+                    <option value="all">{{localize "visual-novel-reverse.effectsPanel.allCharactersOnStage"}}</option>
+                    {{#each filterTargets as |target|}}
+                        <option value="{{target.pos}}" {{#if (eq target.pos ../filterTarget)}}selected{{/if}}>{{target.name}}</option>
+                    {{/each}}
+                </select>
+            </div>
+
+            <div class="vn-fx-section vn-fx-pfilter-grid">
+                {{#each portraitFilters as |filter|}}
+                    <button type="button" class="vn-fx-pfilter" data-filter="{{filter.id}}"><i class="{{filter.icon}}"></i> {{filter.label}}</button>
+                {{/each}}
+                <button type="button" class="vn-fx-pfilter-clear"><i class="fas fa-eraser"></i> {{localize "visual-novel-reverse.effectsPanel.clearFilters"}}</button>
+            </div>
+
             <p class="vn-fx-hint">{{localize "visual-novel-reverse.effectsPanel.hint"}}</p>
 
         </div>

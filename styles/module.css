@@ -4283,6 +4283,30 @@ select[name=hostUserId] option {
   font-weight: 700;
 }
 
+/* ===== Фильтры портретов (scripts/portraitFilters.js, панель "Эффекты") ===== */
+.vn-fx-pfilter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.vn-fx-pfilter-grid button {
+  margin: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vn-fx-pfilter-clear {
+  grid-column: 1/-1;
+  text-align: center !important;
+}
+
+/* Плавная смена фильтра (интерполируются только CSS-функции; url() SVG-фильтров меняются скачком) */
+.vn-portrait {
+  transition: filter 0.5s ease;
+}
+
 /* ===== Buttons Customizer (apps/buttonsCustomizer.js) - панель раньше не имела вообще никакой
    CSS, кнопка "открыть" визуально не отличалась от декоративного мокапа рядом ===== */
 .vn-buttons-customizer {
