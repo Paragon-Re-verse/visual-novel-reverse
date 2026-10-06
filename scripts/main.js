@@ -6,6 +6,7 @@ import { VisualSettingsMenu } from "../apps/visualSettingsMenu.js";
 import { PresetUIClass } from "./presetUIClass.js";
 import { DiscordMenu } from "../apps/discordMenu.js";
 import { EffectsPanel } from "../apps/effectsPanel.js";
+import { applyPortraitFilters, buildPortraitFilterCss } from "./portraitFilters.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 export const _portraitPartsKeys = (fullslots = false) => {
@@ -354,7 +355,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
                     portraitData._mirrorX = (!!portraitData.mirrorX == (side == "left"))
                     if (context.portraitAddData.worldWidthEqualFrame) portraitData.widthEqualFrame = true
                     const isActive = [...settingData.activeSlots.left, ...settingData.activeSlots.right]?.includes(position)
-                    speaker = {...portraitData, zIndex: 31-numIndex-(isActive ? 0 : 10), active: isActive}
+                    speaker = {...portraitData, zIndex: 31-numIndex-(isActive ? 0 : 10), active: isActive, filterCss: buildPortraitFilterCss(portraitData.filters)}
                 }
                 context = { ...context, side, index, speaker }
                 break
@@ -567,6 +568,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         // ниже по файлу вызывает эту функцию напрямую на уже существующем узле.
         _applyBackgroundVisualEffects(fxSettings)
         _applyBarVisualState(fxSettings)
+        applyPortraitFilters(fxSettings)
         _reattachDetailModeMovers()
     }
 
@@ -1062,6 +1064,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         const newPortraitData = foundry.utils.deepClone(portraitData)
         delete newPortraitData.hideName
         delete newPortraitData.hideTitle
+        // Фильтры - состояние сцены, а не библиотеки портретов (см. scripts/portraitFilters.js)
+        delete newPortraitData.filters
         settingData = await updatePortrait(newPortraitData.id, newPortraitData, settingData, true)
         await requestSettingsUpdate(settingData, {renderData: {renderParts: ["editWindow", `${settingData.editActiveSpeaker}Portrait`]}})
     }
@@ -1725,19 +1729,22 @@ function _updateRowLayer(rowEl, settingData) {
     }
     const speakers = ["left", "right"].flatMap(side =>
         (settingData.activeSlots?.[side] || [])
-            .map(pos => settingData.activeSpeakers?.[pos])
-            .filter(Boolean)
+            .map(pos => ({ pos, speaker: settingData.activeSpeakers?.[pos] }))
+            .filter(entry => entry.speaker)
     )
-    const existingSrcs = Array.from(rowEl.querySelectorAll("img")).map(img => img.dataset.src).join("|")
-    const wantedSrcs = speakers.map(s => s.img).join("|")
-    if (existingSrcs === wantedSrcs) return
-    rowEl.innerHTML = ""
-    speakers.forEach(s => {
-        const img = document.createElement("img")
-        img.src = s.img
-        img.dataset.src = s.img
-        rowEl.appendChild(img)
-    })
+    const existingKey = Array.from(rowEl.querySelectorAll("img")).map(img => `${img.dataset.pos}:${img.dataset.src}`).join("|")
+    const wantedKey = speakers.map(entry => `${entry.pos}:${entry.speaker.img}`).join("|")
+    if (existingKey !== wantedKey) {
+        rowEl.innerHTML = ""
+        speakers.forEach(entry => {
+            const img = document.createElement("img")
+            img.src = entry.speaker.img
+            img.dataset.src = entry.speaker.img
+            // data-pos - чтобы applyPortraitFilters (scripts/portraitFilters.js) мог наложить фильтры слота
+            img.dataset.pos = entry.pos
+            rowEl.appendChild(img)
+        })
+    }
 }
 
 // Применяет к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image кроп/прокрутку/блюр фона, читая их из текущих
@@ -2225,6 +2232,9 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
         // То же самое для bar (панель "Эффекты") - плавную анимацию заполнения нельзя получить на
         // узле, пересозданном Handlebars-рендером части "bars", см. _applyBarVisualState() ниже.
         _applyBarVisualState(setting.value)
+        // Фильтры портретов (панель "Эффекты") - тот же приём: без перерисовки портретов, иначе
+        // каждое переключение фильтра перезапускало бы их анимацию появления.
+        applyPortraitFilters(setting.value)
         if (diff?.renderData) VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
     }
 

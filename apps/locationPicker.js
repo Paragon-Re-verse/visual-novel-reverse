@@ -687,7 +687,7 @@ export class LocationPickerSettings extends FormApplication {
             if (!location.scale) location.scale = 100
             if (!location.offsetX) location.offsetX = 0
             if (!location.offsetY) location.offsetY = 0
-            const slotCount = Math.min(game.settings.get(C.ID, "slotCount"), 5)
+            const slotCount = Math.min(game.settings.get(C.ID, "slotCount"), C.maxSlotCount)
             location.presets = location.presets?.map(m => {
                 let num = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].splice(0, slotCount)
                 let arr = num.reduce((acc, el, i) => {

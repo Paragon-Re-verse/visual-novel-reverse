@@ -1,6 +1,7 @@
-import { Constants as C, getSettings, quickSettingsUpdate, peekSetting } from '../scripts/const.js';
+import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate } from '../scripts/const.js';
 import { triggerVNEffect, triggerNarrativeText } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
+import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
 
 // Окно "Эффекты" — быстрый доступ ГМ к визуальным эффектам поверх окна визуальной новеллы:
 // - Тряска спрайта (одного выбранного или всех активных сразу)
@@ -47,6 +48,18 @@ export class EffectsPanel extends FormApplication {
             .map(t => ({ pos: t.pos, name: t.speaker.name || t.pos }))
     }
 
+    // Цели для фильтров портретов - ВСЕ персонажи на сцене (в пределах slotCount активного пресета),
+    // а не только активные (говорящие), как у тряски/вспышки: фильтр - постоянное состояние, и "кровь"
+    // на персонаже второго плана - обычный сценарий.
+    _getStageTargets(settingData = getSettings()) {
+        const slotCount = PresetUIClass.getActivePreset().slotCount
+        return ["left", "right"]
+            .flatMap(side => C.numArray.slice(0, slotCount[side]).map(index => `${side}${index}`))
+            .map(pos => ({ pos, speaker: settingData.activeSpeakers?.[pos] }))
+            .filter(target => target.speaker)
+            .map(target => ({ pos: target.pos, name: target.speaker.name || target.pos }))
+    }
+
     // Список bar активного UI-пресета (раскладка) + их живое содержимое из vnData.barsData
     // (если содержимого ещё нет - bar ни разу не редактировался, показываем значения по умолчанию;
     // сам факт отсутствия записи в barsData - это и есть "скрыт до первого изменения", см. main.js)
@@ -83,7 +96,48 @@ export class EffectsPanel extends FormApplication {
             bgBlur: !!settingData.bgBlur,
             lockExit: !!settingData.lockExit,
             bars: this._getBarsData(settingData),
+            filterTargets: this._getStageTargets(settingData),
+            filterTarget: this.filterTarget || "all",
+            portraitFilters: PORTRAIT_FILTERS.map(filter => ({
+                id: filter.id,
+                icon: filter.icon,
+                label: game.i18n.localize(`${C.ID}.portraitFilters.${filter.id}`),
+            })),
         }
+    }
+
+    // Позиции, к которым применяется фильтр: выбранный слот или все занятые слоты на сцене
+    _getFilterPositions(settingData = getSettings()) {
+        const stagePositions = this._getStageTargets(settingData).map(target => target.pos)
+        if (this.filterTarget && this.filterTarget !== "all") {
+            if (stagePositions.includes(this.filterTarget)) return [this.filterTarget]
+            return []
+        }
+        return stagePositions
+    }
+
+    // Кнопка фильтра подсвечена, если фильтр есть у КАЖДОЙ цели (для "всех на сцене" - у всех сразу)
+    _refreshFilterButtons(html, settingData = getSettings()) {
+        const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
+        html[0].querySelectorAll('.vn-fx-pfilter').forEach(buttonElement => {
+            const filterId = buttonElement.dataset.filter
+            const isActive = speakers.length > 0 && speakers.every(speaker => normalizePortraitFilters(speaker.filters).includes(filterId))
+            buttonElement.classList.toggle('vn-fx-active', isActive)
+        })
+    }
+
+    // Без renderParts - фильтры накладываются на существующие узлы в Hooks.on("updateSetting")
+    // (main.js -> applyPortraitFilters), перерисовка портретов перезапустила бы их анимацию появления
+    async _updateFilters(html, updateFilters) {
+        const settingData = getSettings()
+        const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
+        if (!speakers.length) {
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.noFilterTargets`))
+            return
+        }
+        updateFilters(speakers)
+        await requestSettingsUpdate(settingData)
+        this._refreshFilterButtons(html)
     }
 
     _getSelectedTarget(html) {
@@ -178,6 +232,35 @@ export class EffectsPanel extends FormApplication {
             event.preventDefault()
             await quickSettingsUpdate({ lockExit: !peekSetting("lockExit") }, { renderData: { renderParts: ["foreground"] } })
             event.currentTarget.classList.toggle('vn-fx-active', !!getSettings().lockExit)
+        })
+
+        // --- Фильтры портретов (кровь, грязь, затемнение и т.д., scripts/portraitFilters.js) ---
+        this._refreshFilterButtons(html)
+        html.find('.vn-fx-pfilter-target').on('change', (event) => {
+            this.filterTarget = event.currentTarget.value
+            this._refreshFilterButtons(html)
+        })
+        html.find('.vn-fx-pfilter').on('click', async (event) => {
+            event.preventDefault()
+            const filterId = event.currentTarget.dataset.filter
+            await this._updateFilters(html, (speakers) => {
+                // Если фильтр уже есть у всех целей - снимаем со всех, иначе добавляем всем
+                const allHaveFilter = speakers.every(speaker => normalizePortraitFilters(speaker.filters).includes(filterId))
+                speakers.forEach(speaker => {
+                    const currentFilters = normalizePortraitFilters(speaker.filters)
+                    if (allHaveFilter) {
+                        speaker.filters = currentFilters.filter(id => id !== filterId)
+                    } else {
+                        speaker.filters = normalizePortraitFilters([...currentFilters, filterId])
+                    }
+                })
+            })
+        })
+        html.find('.vn-fx-pfilter-clear').on('click', async (event) => {
+            event.preventDefault()
+            await this._updateFilters(html, (speakers) => {
+                speakers.forEach(speaker => { speaker.filters = [] })
+            })
         })
 
         // --- Горизонтальные шкалы (bar) - отдельная колонка. Раскладка (позиция/масштаб) заведена

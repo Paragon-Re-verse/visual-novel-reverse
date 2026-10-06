@@ -833,10 +833,16 @@ function _injectActorPickerButton(app, htmlEl) {
     });
 }
 
-Hooks.on("renderActorSheet5e", async (app, html, data) => {
+// Любой лист актёра на ApplicationV1 (этот хук Foundry вызывает и для подклассов: ActorSheet5e
+// у dnd5e, PbtaActorSheet у Powered by the Apocalypse и т.д.). Раньше здесь был "renderActorSheet5e",
+// и на листах других систем правило автосоздания "При открытии листа" не срабатывало вовсе.
+Hooks.on("renderActorSheet", async (app, html, data) => {
+    if (!app.actor) return
     const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
     if (autoPortraitSettings[app.actor.type]?.generalRules.portraitAutoCreationRule == "openSheet") portraitAutoMaker([app.actor])
-    _injectActorPickerButton(app, html[0])
+    // Вне dnd5e кнопка Actor Picker уже добавлена в шапку окна хуком getActorSheetHeaderButtons ниже -
+    // встраивание в вёрстку листа дало бы вторую такую же иконку
+    if (game.system.id == "dnd5e") _injectActorPickerButton(app, html[0])
 })
 
 // dnd5e перевёл свои листы персонажей/NPC на ApplicationV2 - "renderActorSheet5e" для них больше не вызывается.
