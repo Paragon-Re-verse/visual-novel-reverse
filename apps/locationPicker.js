@@ -1,6 +1,7 @@
 import { Constants as C, getEmptyActiveSpeakers, getLocation, getSettings, peekSetting, getTextureSize, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { VNLocation } from '../scripts/locationClass.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
+import { PresetUIClass } from '../scripts/presetUIClass.js';
 
 
 const _getLocationColumns = (locations) => {
@@ -687,21 +688,23 @@ export class LocationPickerSettings extends FormApplication {
             if (!location.scale) location.scale = 100
             if (!location.offsetX) location.offsetX = 0
             if (!location.offsetY) location.offsetY = 0
-            const slotCount = Math.min(game.settings.get(C.ID, "slotCount"), C.maxSlotCount)
-            location.presets = location.presets?.map(m => {
-                let num = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].splice(0, slotCount)
-                let arr = num.reduce((acc, el, i) => {
-                    acc.push(m.portraits[`left${el}`] || {})
-                    return acc
-                }, [])
-                num.reverse()
-                arr = arr.concat(num.reduce((acc, el, i) => {
-                    acc.push(m.portraits[`right${el}`] || {})
-                    return acc
-                }, []))
-                m.portraits = arr
-                return m
-            })
+            // Число слотов превью - по активному UI-пресету для каждой стороны (как в самом VN-окне),
+            // а не по глобальной настройке slotCount: при пресете 7/7 и глобальной 4 превью показывало
+            // по 4 портрета, хотя пресет локации хранит все 14
+            const slotCount = PresetUIClass.getActivePreset().slotCount
+            const sideNumbers = (side) => C.numArray.slice(0, Math.min(slotCount[side], C.maxSlotCount))
+            // Копия для шаблона: раньше portraits заменялся массивом прямо в this._locationData, и
+            // повторная отрисовка того же окна искала portraits["leftfirst"] в массиве - пустые слоты
+            location = {
+                ...location,
+                presets: location.presets?.map(preset => ({
+                    ...preset,
+                    portraits: [
+                        ...sideNumbers("left").map(number => preset.portraits?.[`left${number}`] || {}),
+                        ...sideNumbers("right").reverse().map(number => preset.portraits?.[`right${number}`] || {}),
+                    ],
+                })),
+            }
         }
         return { ...text, location: location }
     }

@@ -743,10 +743,12 @@ i.vn-request-icon
 .vn-ac-slot
     background-color: rgba(203, 203, 203, 0.831372549)
     border-radius: 10px
-    min-width: 45px
+    // До 7 слотов на сторону (14 всего) не помещаются в 625px окна по 45px - слоты сжимаются,
+    // а не переносятся второй строкой поверх фильтров (flex-wrap у .ac-portraits выключен ниже)
+    min-width: 0
     height: 45px
     margin: 0 2px
-    flex: 0
+    flex: 0 1 45px
     cursor: pointer
     pointer-events: all
     border: 1px solid black
@@ -777,6 +779,7 @@ i.vn-request-icon
     margin-top: 3px
     max-height: 45px
     flex: 0 0 auto
+    flex-wrap: nowrap
 
 .ac-body
     flex: 1 1 0
