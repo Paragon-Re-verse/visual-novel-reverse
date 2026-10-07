@@ -1,4 +1,4 @@
-import { Constants as C, getEmptyActiveSpeakers, getLocation, getSettings, peekSetting, getTextureSize, requestSettingsUpdate } from '../scripts/const.js';
+import { Constants as C, getEmptyActiveSpeakers, getLocation, getSettings, peekSetting, getTextureSize, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { VNLocation } from '../scripts/locationClass.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 
@@ -586,7 +586,7 @@ export class LocationPicker extends FormApplication {
             this.instance.filterText = filterText
             this.instance.render(true);
         } else {
-            this.instance.bringToTop();
+            showRenderedWindow(this.instance);
         }
     }
 
@@ -657,7 +657,7 @@ export class LocationPickerSettings extends FormApplication {
             }
             this.windows[id].render(true);
         } else {
-            this.windows[id].bringToTop();
+            showRenderedWindow(this.windows[id]);
         }
     }
 

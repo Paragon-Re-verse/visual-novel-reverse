@@ -1,4 +1,4 @@
-import { Constants as C, getSettings, getTags, getPortrait, getActivePortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData } from '../scripts/const.js';
+import { Constants as C, getSettings, getTags, getPortrait, getActivePortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData, showRenderedWindow } from '../scripts/const.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { ActorPickerSub } from './actorPickerSub.js';
@@ -288,7 +288,7 @@ export class ActorPicker extends FormApplication {
             this.instance.changedPosition = changedPosition
             this.instance.render(true);
         } else {
-            this.instance.bringToTop();
+            showRenderedWindow(this.instance);
         }
     }
 

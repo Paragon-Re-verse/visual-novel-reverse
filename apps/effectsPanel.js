@@ -1,4 +1,4 @@
-import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate } from '../scripts/const.js';
+import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { triggerVNEffect, triggerNarrativeText } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
@@ -23,7 +23,7 @@ export class EffectsPanel extends FormApplication {
     static open() {
         if (!EffectsPanel.instance) EffectsPanel.instance = new EffectsPanel()
         if (EffectsPanel.instance.rendered) {
-            EffectsPanel.instance.bringToTop()
+            showRenderedWindow(EffectsPanel.instance)
         } else {
             EffectsPanel.instance.render(true)
         }
