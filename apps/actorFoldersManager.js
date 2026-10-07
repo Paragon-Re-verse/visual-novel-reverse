@@ -1,4 +1,4 @@
-import { Constants as C, getSettings, requestSettingsUpdate } from '../scripts/const.js';
+import { Constants as C, getSettings, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { ActorPicker } from './actorPicker.js';
 
 // Окно управления собственными Категориями/Папками Actor Picker.
@@ -34,7 +34,7 @@ export class ActorFoldersManager extends FormApplication {
         if (!this.instance.rendered) {
             this.instance.render(true);
         } else {
-            this.instance.bringToTop();
+            showRenderedWindow(this.instance);
         }
     }
 

@@ -18,6 +18,13 @@ export const Constants = {
 
 export const VNapp = () => Constants.MODULE().app
 
+// Показ уже открытого одиночного окна (ApplicationV1). Свёрнутое двойным кликом по заголовку окно
+// остаётся rendered, и одно bringToTop() поднимало наверх только его заголовок без содержимого.
+export async function showRenderedWindow(app) {
+    if (app._minimized) await app.maximize()
+    app.bringToTop()
+}
+
 /**
  * Retrieves the settings data for the visual novel dialogues module.
  *
