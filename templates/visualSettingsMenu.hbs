@@ -306,9 +306,10 @@
                             <hr>
                             <h4>{{localize "visual-novel-reverse.portraitsMaker.chosenGroup"}}</h4>
                             <select data-key="selectedGroup">
+                                {{!-- Внутри вложенного each контекст - group, поэтому вкладка - через блок-параметр tab --}}
                                 {{#each ../settingsTab as |group|}}
-                                    {{#unless (eq ../data.currentTab group.name)}}
-                                        <option value="{{group.name}}" {{#if (eq autoSearchData.generalRules.chosenGroup group.name)}}selected{{/if}}>{{group.label}}</option>
+                                    {{#unless (eq tab.name group.name)}}
+                                        <option value="{{group.name}}" {{#if (or (eq tab.autoSearchData.generalRules.chosenGroup group.name) (eq tab.autoSearchData.generalRules.useChosenGroupSettings group.name))}}selected{{/if}}>{{group.label}}</option>
                                     {{/unless}}
                                 {{/each}}
                             </select>

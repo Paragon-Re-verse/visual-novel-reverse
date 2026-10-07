@@ -1284,6 +1284,11 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         playSound(parseInt(target.dataset.level))
     }
     static async _requestClick(event, target) {
+        // Своя заявка: принять/отменить - по праву 'requests', как раньше. Чужая: принять (поставить чужой
+        // портрет в мастер-слот) или отклонить - только с правом окна редактирования (по умолчанию ГМ).
+        // Право 'requests' по умолчанию есть у всех игроков. request.id == id создателя, см. _createRequest.
+        const isOwnRequest = target.dataset.id === game.user.id
+        if (!isOwnRequest && !allowTo('editWindow')) return
         if (event.type == "click" && allowTo('requests')) {
             const _id = target.dataset.id
             const settingData = getSettings()
@@ -1331,11 +1336,9 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             await requestSettingsUpdate(settingData, _options)
             // VisualNovelDialogues._render(renderParts)
         } else {
-            // Правый клик (или левый без права 'requests') - отклонить/отменить заявку. Разрешено
-            // тому, у кого есть право 'requests' (тот же, кто может принять), ИЛИ автору заявки,
-            // отменяющему свою же (request.id == id создателя, см. _createRequest). Без этой проверки
-            // любой игрок мог правым кликом удалить ЧУЖУЮ заявку из общей очереди.
-            if (!allowTo('requests') && target.dataset.id !== game.user.id) return
+            // Правый клик (или левый без права 'requests') - отклонить/отменить заявку. Чужую - только с
+            // правом окна редактирования (проверено в начале метода), свою - автору или по праву 'requests'.
+            if (!allowTo('requests') && !isOwnRequest) return
             // Временный костыль до обновления Advanced Requests
             const _options = {change: ["requestsRemove"], requestId: target.dataset.id, renderData: {renderParts: ["foreground"]}}
 

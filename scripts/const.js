@@ -358,6 +358,24 @@ export const defaultPortraitSettings = {
     character: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate },
     npc: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate }
 }
+// Настройки автосоздания, которые реально действуют для типа актёра. Порядок: "Использовать эту группу
+// для всех" (глобальная настройка useChosenGroupSettings) -> "Использовать настройки выбранной группы" у
+// самого типа (generalRules.useChosenGroupSettings = имя группы, цепочки допускаются, циклы обрываются) ->
+// собственные настройки типа.
+export function getEffectivePortraitSettings(type, autoPortraitSettings = game.settings.get(Constants.ID, "autoPortraitSettings")) {
+    const groupForAll = game.settings.get(Constants.ID, "useChosenGroupSettings")
+    if (groupForAll && autoPortraitSettings[groupForAll]) return autoPortraitSettings[groupForAll]
+    let currentType = type
+    const visitedTypes = new Set()
+    while (autoPortraitSettings[currentType]) {
+        visitedTypes.add(currentType)
+        const linkedType = autoPortraitSettings[currentType].generalRules?.useChosenGroupSettings
+        if (typeof linkedType !== "string" || !linkedType || visitedTypes.has(linkedType) || !autoPortraitSettings[linkedType]) break
+        currentType = linkedType
+    }
+    return autoPortraitSettings[currentType]
+}
+
 // Для типов актёров, которых нет в defaultPortraitSettings (например "other" в Powered by the Apocalypse,
 // vehicle/group/encounter в dnd5e, типы сторонних модулей). По умолчанию "Только вручную": автосоздание
 // для таких типов раньше не работало вовсе, и включать его молча нельзя - ГМ включит сам, где нужно.

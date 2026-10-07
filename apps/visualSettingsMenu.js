@@ -773,8 +773,22 @@ export class VisualSettingsMenu extends FormApplication {
                         const selectedGroup = checkbox.closest('.pms-header-settings').querySelector('select[data-key="selectedGroup"]').value
                         const autoPortraitSettings = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"));
                         autoPortraitSettings[tab].generalRules.useChosenGroupSettings = checkbox.checked ? selectedGroup : "";
+                        autoPortraitSettings[tab].generalRules.chosenGroup = selectedGroup;
                         await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettings);
                     }
+                })
+            })
+
+            // Выбранная группа - раньше выбор не сохранялся вовсе (chosenGroup никогда не записывался) и после
+            // перерисовки сбрасывался. Если "Использовать настройки выбранной группы" уже включено - источник
+            // настроек переключается вместе с выбором.
+            html[0].querySelectorAll('.pms-header-settings select[data-key="selectedGroup"]').forEach(selectElement => {
+                const tab = selectElement.closest('.pms-tab').dataset.tab;
+                selectElement.addEventListener('change', async () => {
+                    const autoPortraitSettings = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"));
+                    autoPortraitSettings[tab].generalRules.chosenGroup = selectElement.value;
+                    if (autoPortraitSettings[tab].generalRules.useChosenGroupSettings) autoPortraitSettings[tab].generalRules.useChosenGroupSettings = selectElement.value;
+                    await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettings);
                 })
             })
 
