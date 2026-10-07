@@ -358,8 +358,10 @@ export const defaultPortraitSettings = {
     character: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate },
     npc: { searchConditions: [defaultPortraitSettingsTemplate], generalRules: generalRulesTemplate }
 }
-// Для типов актёров, которых нет в defaultPortraitSettings (например "other" в Powered by the Apocalypse)
-export const getDefaultPortraitSettingsForType = () => ({
+// Для типов актёров, которых нет в defaultPortraitSettings (например "other" в Powered by the Apocalypse,
+// vehicle/group/encounter в dnd5e, типы сторонних модулей). По умолчанию "Только вручную": автосоздание
+// для таких типов раньше не работало вовсе, и включать его молча нельзя - ГМ включит сам, где нужно.
+export const getDefaultPortraitSettingsForType = (portraitAutoCreationRule = "manuallyOnly") => ({
     searchConditions: [{ ...defaultPortraitSettingsTemplate }],
-    generalRules: { ...generalRulesTemplate },
+    generalRules: { ...generalRulesTemplate, portraitAutoCreationRule },
 })

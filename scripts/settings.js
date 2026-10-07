@@ -571,6 +571,23 @@ Hooks.on("ready", async () => {
             await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettingsForTypes)
             console.log(`Auto portrait settings added for actor types: ${actorTypesWithoutSettings.join(", ")} ✔`)
         }
+        // v2.3.3 заводила новым типам правило "При открытии листа" - автосоздание молча включалось для
+        // vehicle/group/encounter и типов чужих модулей. Один раз переводим на "Только вручную" те записи,
+        // которые остались ровно такими, какими их создала v2.3.3 (ГМ их не трогал).
+        const oneTimeChecksForTypes = foundry.utils.deepClone(game.settings.get(C.ID, "oneTimeChecks"))
+        if (!oneTimeChecksForTypes.autoPortraitTypesManualOnly) {
+            const autoPortraitSettingsToMigrate = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"))
+            const settingsCreatedByV233 = getDefaultPortraitSettingsForType("openSheet")
+            const typesToMigrate = Object.keys(autoPortraitSettingsToMigrate).filter(type =>
+                !["character", "npc"].includes(type) && foundry.utils.objectsEqual(autoPortraitSettingsToMigrate[type], settingsCreatedByV233))
+            if (typesToMigrate.length) {
+                typesToMigrate.forEach(type => { autoPortraitSettingsToMigrate[type].generalRules.portraitAutoCreationRule = "manuallyOnly" })
+                await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettingsToMigrate)
+                console.log(`Auto portrait creation set to "manually only" for actor types: ${typesToMigrate.join(", ")} ✔`)
+            }
+            oneTimeChecksForTypes.autoPortraitTypesManualOnly = true
+            await game.settings.set(C.ID, "oneTimeChecks", oneTimeChecksForTypes)
+        }
 
         // Чек штуковин
         const oneTimeChecks = game.settings.get(C.ID, "oneTimeChecks")
