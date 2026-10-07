@@ -823,12 +823,27 @@ async function parseActors(actorIds) {
     VisualNovelDialogues.toggleVN()
 }
 
+// Настройки, которые игрок может попросить ГМа записать через сокет "setSetting" (меню Discord,
+// requestSettingsWithKeyUpdate в apps/discordMenu.js). Любой другой ключ - отказ: раньше ГМ-клиент
+// записывал ЛЮБУЮ настройку модуля по запросу любого клиента.
+const PLAYER_WRITABLE_SETTINGS = ["discordHostUserId", "discordChannelId", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordHighlightGM"]
+
+// Запись настроек от имени ГМа - только по запросу реального подключённого пользователя. Foundry передаёт
+// id отправителя последним аргументом обработчика сокета; если его нет - проверку пропускаем, чтобы не
+// сломать законные действия игроков.
+const isTrustedSocketSender = (senderId) => senderId === undefined || !!game.users.get(senderId)?.active
+
 // Сокеты
 Hooks.on('setup', () => {
-    game.socket.on(`module.${C.ID}`, async ({ type, data, options, key }) => {
+    game.socket.on(`module.${C.ID}`, async ({ type, data, options, key }, senderId) => {
         switch (type) {
             case "VNDataSetSettings":
-                if (game.user.isGM) await game.settings.set(C.ID, 'vnData', data, options);
+                if (!game.user.isGM) break;
+                if (!isTrustedSocketSender(senderId)) {
+                    console.warn(`${C.ID} | vnData update from unknown or inactive user ${senderId} ignored`)
+                    break;
+                }
+                await game.settings.set(C.ID, 'vnData', data, options);
                 break;
             case "renderVN":
                 if (!VisualNovelDialogues.instance) return
@@ -848,12 +863,23 @@ Hooks.on('setup', () => {
                 // сливаем в АКТУАЛЬНОЕ значение настройки прямо здесь, а не доверяем уже устаревшему
                 // на момент получения объекту от клиента.
                 if (game.user.isGM) {
+                    if (!isTrustedSocketSender(senderId)) break;
+                    // Каждый пишет только свой Discord ID
+                    if (senderId !== undefined && data?.userId !== senderId) {
+                        console.warn(`${C.ID} | user ${senderId} tried to set the Discord ID of user ${data?.userId}`)
+                        break;
+                    }
                     const merged = foundry.utils.mergeObject(game.settings.get(C.ID, 'discordUsersIds'), {[data.userId]: data.value})
                     await game.settings.set(C.ID, 'discordUsersIds', merged);
                 }
                 break;
             case "setSetting":
-                if (game.user.isGM) await game.settings.set(C.ID, key, data, options);
+                if (!game.user.isGM) break;
+                if (!isTrustedSocketSender(senderId) || !PLAYER_WRITABLE_SETTINGS.includes(key)) {
+                    console.warn(`${C.ID} | setting "${key}" requested by user ${senderId} ignored`)
+                    break;
+                }
+                await game.settings.set(C.ID, key, data, options);
                 break;
             case "discordElementActivity":
                 discordElementActivity(data.id, data.isSpeaking)

@@ -1,4 +1,4 @@
-import { Constants as C, getSettings, getTags, getPortrait, getActivePortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData, showRenderedWindow } from '../scripts/const.js';
+import { Constants as C, getSettings, getTags, getPortrait, getActivePortrait, updatePortrait, getEmptyActiveSpeakers, requestSettingsUpdate, getDefaultPortraitData, showRenderedWindow, getEffectivePortraitSettings } from '../scripts/const.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { ActorPickerSub } from './actorPickerSub.js';
@@ -414,7 +414,7 @@ async function portraitAutoMaker(_actors = null, returnData = false, forceupdate
     // Ищем картиночки
     for (const actor of _actors) {
         const type = actor.type
-        const actorPortraitSettings = autoPortraitSettings[type]
+        const actorPortraitSettings = getEffectivePortraitSettings(type, autoPortraitSettings)
         // Если настроек для этого типа актёра нету - скип
         if (!actorPortraitSettings || hiddenTypes.includes(type)) continue
 
@@ -776,7 +776,7 @@ Hooks.on("updateActor", async (actor, update, changes, userId) => {
     if (userId !== game.user.id) return
     const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
     // const forcedChange = !!update.img || !!update.prototypeToken.texture.src || !!update.name || !!update.prototypeToken.name        (пока не используется)
-    if (autoPortraitSettings[actor.type]?.generalRules.portraitAutoCreationRule == "actorCreateOrChange") portraitAutoMaker([actor])
+    if (getEffectivePortraitSettings(actor.type, autoPortraitSettings)?.generalRules.portraitAutoCreationRule == "actorCreateOrChange") portraitAutoMaker([actor])
 })
 
 function _injectActorPickerButton(app, htmlEl) {
@@ -839,7 +839,7 @@ function _injectActorPickerButton(app, htmlEl) {
 Hooks.on("renderActorSheet", async (app, html, data) => {
     if (!app.actor) return
     const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
-    if (autoPortraitSettings[app.actor.type]?.generalRules.portraitAutoCreationRule == "openSheet") portraitAutoMaker([app.actor])
+    if (getEffectivePortraitSettings(app.actor.type, autoPortraitSettings)?.generalRules.portraitAutoCreationRule == "openSheet") portraitAutoMaker([app.actor])
     // Вне dnd5e кнопка Actor Picker уже добавлена в шапку окна хуком getActorSheetHeaderButtons ниже -
     // встраивание в вёрстку листа дало бы вторую такую же иконку
     if (game.system.id == "dnd5e") _injectActorPickerButton(app, html[0])
@@ -850,7 +850,7 @@ Hooks.on("renderActorSheet", async (app, html, data) => {
 Hooks.on("renderActorSheetV2", async (app, html, context, options) => {
     if (!app.actor) return
     const autoPortraitSettings = game.settings.get(C.ID, "autoPortraitSettings")
-    if (autoPortraitSettings[app.actor.type]?.generalRules.portraitAutoCreationRule == "openSheet") portraitAutoMaker([app.actor])
+    if (getEffectivePortraitSettings(app.actor.type, autoPortraitSettings)?.generalRules.portraitAutoCreationRule == "openSheet") portraitAutoMaker([app.actor])
     _injectActorPickerButton(app, html)
 })
 
