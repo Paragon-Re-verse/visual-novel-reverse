@@ -253,6 +253,12 @@ Hooks.once('init', function() {
     // "Создать пресет из текущей локации" (apps/locationPicker.js) сохраняет сцену целиком: кроме фона и
     // портретов - фильтры, шкалы, эффекты фона, режим ряда, активные слоты и UI-пресет
     registerSettings("sceneSnapshotFull", "world", false, Boolean, false)
+    // Реакции игроков - пузырь над портретом (scripts/reactions.js); перерисовка - чтобы показать/скрыть кнопку
+    registerSettings("playerReactions", "world", false, Boolean, true, null, true)
+    // Переход при смене фона локации (scripts/locationTransition.js): затемнение / шторка / без перехода,
+    // и его полная длительность в секундах (половина - закрытие, половина - открытие)
+    registerSettings("locationTransition", "world", false, String, "fade", null, false, {none: `${C.ID}.settings.locationTransitionNone`, fade: `${C.ID}.settings.locationTransitionFade`, curtain: `${C.ID}.settings.locationTransitionCurtain`})
+    registerSettings("locationTransitionSpeed", "world", false, Number, 1, null, false, null, {min: 0.3, max: 3, step: 0.1})
     // Reduced motion - личная (client) настройка доступности: класс на body гасит анимации окна VN
     // (styles/module.css, .vn-reduced-motion), тряска не запускается, вспышки приглушены
     game.settings.register(C.ID, "reducedMotion", {

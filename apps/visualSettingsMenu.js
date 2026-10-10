@@ -166,7 +166,7 @@ export class VisualSettingsMenu extends FormApplication {
         const modulesSettingsKeys = ["useSimpleCalendar", "advancedRequestsSync", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordChannelId", "discordHighlightGM"]
         // Effects settings menu (панель "Эффекты" - apps/effectsPanel.js)
         const effectsSettingsMenus = []
-        const effectsSettingsKeys = ["flashLightSpeed", "flashDarkSpeed", "bgScrollDirection", "bgScrollLoop", "bgScrollSpeed", "bgBlurStrength", "narrativeTextMode", "narrativeTypeSpeed", "barChangeSpeed", "barsAlwaysShow", "autoPortraitFilters", "sceneSnapshotFull", "reducedMotion"]
+        const effectsSettingsKeys = ["flashLightSpeed", "flashDarkSpeed", "bgScrollDirection", "bgScrollLoop", "bgScrollSpeed", "bgBlurStrength", "narrativeTextMode", "narrativeTypeSpeed", "barChangeSpeed", "barsAlwaysShow", "autoPortraitFilters", "sceneSnapshotFull", "reducedMotion", "playerReactions", "locationTransition", "locationTransitionSpeed"]
 
         const settings =
             _mode=== "menuVisual" ? settingsArray(visualSettingsMenus, visualSettingsKeys) :

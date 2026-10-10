@@ -7,6 +7,8 @@ import { PresetUIClass } from "./presetUIClass.js";
 import { DiscordMenu } from "../apps/discordMenu.js";
 import { EffectsPanel } from "../apps/effectsPanel.js";
 import { applyPortraitFilters, buildSpeakerFilterCss } from "./portraitFilters.js";
+import { applyVnDataUpdate } from "./locationTransition.js";
+import { receiveReaction, toggleReactionMenu } from "./reactions.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 export const _portraitPartsKeys = (fullslots = false) => {
@@ -75,6 +77,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
 
             // Дополнительно
             createRequest: this._createRequest,
+            reactionMenu: this._reactionMenu,
             requestClick: {buttons: [0, 2], handler: this._requestClick},
             portraitClick: {buttons: [0, 2], handler: this._portraitClick},
             spriteSelect: this._spriteSelect,
@@ -150,6 +153,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             return acc
         }, {})
         shownElements["honeycomb"] = shownElements["editWindow"] || shownElements["locationSubChanges"]
+        // Реакции (scripts/reactions.js) - то же право, что и у кликов по портретам
+        shownElements["reactions"] = shownElements["portraitInteraction"] && game.settings.get(C.ID, "playerReactions")
 
         const data = {
             hideUI: settingData.hideUI,
@@ -1284,6 +1289,9 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         // VisualNovelDialogues._render(["foreground"])
         playSound(parseInt(target.dataset.level))
     }
+    static _reactionMenu(event, target) {
+        toggleReactionMenu(target)
+    }
     static async _requestClick(event, target) {
         // Своя заявка: принять/отменить - по праву 'requests', как раньше. Чужая: принять (поставить чужой
         // портрет в мастер-слот) или отклонить - только с правом окна редактирования (по умолчанию ГМ).
@@ -2151,6 +2159,8 @@ Hooks.once("ready", () => {
             _applyEffectLocally(payload.data.kind, payload.data.target)
         } else if (payload?.type === 'vnNarrative' && payload.data?.pages) {
             _playNarrativeText(payload.data.pages)
+        } else if (payload?.type === 'vnReaction' && payload.data) {
+            receiveReaction(payload.data)
         }
     })
 })
@@ -2234,14 +2244,18 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
         // просят renderParts:["background"].
         // setting.value - уже актуальный vnData этого же обновления (Foundry передаёт его готовым в
         // хук) - переиспользуем его вместо ещё одного getSettings()/deepClone здесь же.
-        _applyBackgroundVisualEffects(setting.value)
-        // То же самое для bar (панель "Эффекты") - плавную анимацию заполнения нельзя получить на
-        // узле, пересозданном Handlebars-рендером части "bars", см. _applyBarVisualState() ниже.
-        _applyBarVisualState(setting.value)
-        // Фильтры портретов (панель "Эффекты") - тот же приём: без перерисовки портретов, иначе
-        // каждое переключение фильтра перезапускало бы их анимацию появления.
-        applyPortraitFilters(setting.value)
-        if (diff?.renderData) VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
+        // Смена фона проигрывается переходом (scripts/locationTransition.js): всё обновление ниже
+        // применяется под закрытым экраном
+        await applyVnDataUpdate(setting.value, async () => {
+            _applyBackgroundVisualEffects(setting.value)
+            // То же самое для bar (панель "Эффекты") - плавную анимацию заполнения нельзя получить на
+            // узле, пересозданном Handlebars-рендером части "bars", см. _applyBarVisualState() ниже.
+            _applyBarVisualState(setting.value)
+            // Фильтры портретов (панель "Эффекты") - тот же приём: без перерисовки портретов, иначе
+            // каждое переключение фильтра перезапускало бы их анимацию появления.
+            applyPortraitFilters(setting.value)
+            if (diff?.renderData) await VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
+        })
     }
 
     // Раскладка bar (позиция/сам факт существования) живёт в presetsUI, а не в vnData - изменение
