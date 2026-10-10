@@ -6,7 +6,7 @@ import { VisualSettingsMenu } from "../apps/visualSettingsMenu.js";
 import { PresetUIClass } from "./presetUIClass.js";
 import { DiscordMenu } from "../apps/discordMenu.js";
 import { EffectsPanel } from "../apps/effectsPanel.js";
-import { applyPortraitFilters, buildPortraitFilterCss } from "./portraitFilters.js";
+import { applyPortraitFilters, buildSpeakerFilterCss } from "./portraitFilters.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 export const _portraitPartsKeys = (fullslots = false) => {
@@ -355,7 +355,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
                     portraitData._mirrorX = (!!portraitData.mirrorX == (side == "left"))
                     if (context.portraitAddData.worldWidthEqualFrame) portraitData.widthEqualFrame = true
                     const isActive = [...settingData.activeSlots.left, ...settingData.activeSlots.right]?.includes(position)
-                    speaker = {...portraitData, zIndex: 31-numIndex-(isActive ? 0 : 10), active: isActive, filterCss: buildPortraitFilterCss(portraitData.filters)}
+                    speaker = {...portraitData, zIndex: 31-numIndex-(isActive ? 0 : 10), active: isActive, filterCss: buildSpeakerFilterCss(portraitData)}
                 }
                 context = { ...context, side, index, speaker }
                 break
@@ -1066,6 +1066,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         delete newPortraitData.hideTitle
         // Фильтры - состояние сцены, а не библиотеки портретов (см. scripts/portraitFilters.js)
         delete newPortraitData.filters
+        delete newPortraitData.autoFilters
         settingData = await updatePortrait(newPortraitData.id, newPortraitData, settingData, true)
         await requestSettingsUpdate(settingData, {renderData: {renderParts: ["editWindow", `${settingData.editActiveSpeaker}Portrait`]}})
     }
@@ -1970,6 +1971,8 @@ function _applyEffectLocally(kind, target) {
     const layers = _ensureEffectLayers(body)
 
     if (kind === "shake") {
+        // Reduced motion (личная настройка, scripts/settings.js) - тряска у этого клиента не запускается
+        if (document.body.classList.contains("vn-reduced-motion")) return
         // ВАЖНО: для "all" раньше тут был селектор ".vn-pBody" (внешняя обёртка портрета) - но у
         // ".vn-pBody-left"/".vn-pBody-right" (второй класс на том же элементе, см. portrait.hbs) в
         // module.css есть базовый "transform: translate(0, -90%)", который держит портрет на нужной

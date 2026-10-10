@@ -54,6 +54,7 @@
         {{#each location.presets as |preset|}}
             <div class="lps-preset-container" data-id="{{preset.id}}">
                 <div class="lps-preset-locInfo flexrow">
+                    {{#if preset.scene}}<i class="fas fa-camera lps-preset-full-snapshot" data-tooltip="{{localize "visual-novel-reverse.locationPickerSub.fullSnapshot"}}"></i>{{/if}}
                     <div class="lps-preset-names">
                         <span class="lps-preset-name">{{preset.locationData.locationName}}</span>
                         <span class="lps-preset-parName">{{preset.locationData.parentLocation}}</span>

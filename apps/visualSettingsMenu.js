@@ -166,7 +166,7 @@ export class VisualSettingsMenu extends FormApplication {
         const modulesSettingsKeys = ["useSimpleCalendar", "advancedRequestsSync", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordChannelId", "discordHighlightGM"]
         // Effects settings menu (панель "Эффекты" - apps/effectsPanel.js)
         const effectsSettingsMenus = []
-        const effectsSettingsKeys = ["flashLightSpeed", "flashDarkSpeed", "bgScrollDirection", "bgScrollLoop", "bgScrollSpeed", "bgBlurStrength", "narrativeTextMode", "narrativeTypeSpeed", "barChangeSpeed", "barsAlwaysShow"]
+        const effectsSettingsKeys = ["flashLightSpeed", "flashDarkSpeed", "bgScrollDirection", "bgScrollLoop", "bgScrollSpeed", "bgBlurStrength", "narrativeTextMode", "narrativeTypeSpeed", "barChangeSpeed", "barsAlwaysShow", "autoPortraitFilters", "sceneSnapshotFull", "reducedMotion"]
 
         const settings =
             _mode=== "menuVisual" ? settingsArray(visualSettingsMenus, visualSettingsKeys) :
@@ -176,7 +176,12 @@ export class VisualSettingsMenu extends FormApplication {
             null
 
 
-        return { showMode: _mode, pFields, data, ...preset, presets: presetArray, settings, settingsTab, isMenuTab: true };
+        // Название шкалы живёт в vnData.barsData, а не в раскладке пресета - превью в UI customization нужно оно,
+        // чтобы, как и настоящая .vn-bar, оставить над треком строку под название (иначе трек выше, чем в окне VN)
+        const barsData = game.settings.get(C.ID, 'vnData').barsData || []
+        const bars = (preset?.bars || []).map(bar => ({ ...bar, name: barsData.find(barData => barData.id === bar.id)?.name || "" }))
+
+        return { showMode: _mode, pFields, data, ...preset, bars, presets: presetArray, settings, settingsTab, isMenuTab: true };
     }
 
     activateListeners(html) {
@@ -285,6 +290,17 @@ export class VisualSettingsMenu extends FormApplication {
 
         // Меню настройки UI
         if (this.mode == "menuUI") {
+            // Мокап .vsm-UI - уменьшенная копия экрана, а настоящая шкала (.vn-bar) имеет фиксированный размер
+            // в px. Без этого коэффициента превью шкал (.vsm-bar-preview) было в % от мокапа и совпадало с окном VN
+            // только при ширине окна браузера 1100 px. ResizeObserver - т.к. окончательная ширина окна меню
+            // выставляется уже после activateListeners.
+            const uiMockupElement = html[0].querySelector('.vsm-UI')
+            // Один наблюдатель на окно: при каждой перерисовке меню старый отключается
+            this._uiRatioObserver?.disconnect()
+            this._uiRatioObserver = new ResizeObserver(() => {
+                uiMockupElement.style.setProperty('--vsm-ratio', uiMockupElement.clientWidth / window.innerWidth)
+            })
+            this._uiRatioObserver.observe(uiMockupElement)
             // Подсказка при наведении на элемент настройки
             const settingElements = html[0].querySelector('.vsm-UI').querySelectorAll('input, .vsm-pField-arrow, .vsm-mover-grab')
             const settingHintEl = html[0].querySelector(`.vsm-header .vsm-hint`)

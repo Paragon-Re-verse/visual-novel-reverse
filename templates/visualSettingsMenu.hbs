@@ -139,7 +139,11 @@
                         {{!-- Горизонтальные шкалы (bar) - только превью раскладки, без перемещения здесь;
                         перетаскивание и ресайз - в detailed mode --}}
                         {{#each bars}}
-                            <div class="vsm-bar-preview" data-id="{{this.id}}" style="left: {{this.offsetX}}%; top: {{this.offsetY}}%; scale: {{this.scale}}%;"></div>
+                            <div class="vsm-bar-preview" data-id="{{this.id}}" style="left: {{this.offsetX}}%; top: {{this.offsetY}}%; scale: {{this.scale}}%;">
+                                {{!-- Та же структура, что у .vn-bar (mainApp/bars.hbs): строка названия + трек --}}
+                                {{#if this.name}}<span class="vsm-bar-preview-name">{{this.name}}</span>{{/if}}
+                                <div class="vsm-bar-preview-track"></div>
+                            </div>
                         {{/each}}
 
                     </div>
