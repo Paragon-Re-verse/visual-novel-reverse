@@ -133,7 +133,16 @@
             "sceneSnapshotFull": "Full scene snapshot",
             "sceneSnapshotFullHint": "\"Create a preset from the current location\" also saves portrait filters, bars, background effects (darkening, scroll, blur), row mode, active slots and the UI preset. Selecting such a preset restores all of it. When disabled, the preset stores only the background and portraits (without filters).",
             "reducedMotion": "Reduced motion (only for you)",
-            "reducedMotionHint": "Animations and transitions of the Visual Novel window finish instantly, shaking and flashes are not shown, the background does not scroll. Affects only this browser."
+            "reducedMotionHint": "Animations and transitions of the Visual Novel window finish instantly, shaking and flashes are not shown, the background does not scroll. Affects only this browser.",
+            "playerReactions": "Player reactions",
+            "playerReactionsHint": "A smiley button in the bottom-left corner of the Visual Novel window: a player picks a reaction (\"!\", \"?\", \"♥\"…) and a bubble pops up over their character's portrait for everyone for a moment. The GM reacts for the portrait selected in the Actor Picker / edit window.",
+            "locationTransition": "Location transition",
+            "locationTransitionHint": "How the screen changes when the location background changes. Players with \"Reduced motion\" enabled see an instant change.",
+            "locationTransitionNone": "None",
+            "locationTransitionFade": "Fade to black",
+            "locationTransitionCurtain": "Curtain",
+            "locationTransitionSpeed": "Location transition duration",
+            "locationTransitionSpeedHint": "Full duration of the transition in seconds: half to close the screen, half to open it"
         },
         "toolbar": {
             "openVN": "Open Visual Novel window",
@@ -754,6 +763,17 @@
             "blur": "Blur",
             "ghost": "Ghost",
             "glow": "Glow"
+        },
+        "reactions": {
+            "button": "Reaction",
+            "noCharacter": "Your character is not in the Visual Novel window",
+            "noTarget": "Select a portrait (gold frame) in the Actor Picker or the edit window",
+            "exclaim": "Exclamation",
+            "question": "Question",
+            "surprise": "Surprise",
+            "love": "Love",
+            "silence": "Silence",
+            "music": "Song"
         }
     }
 }

@@ -3977,3 +3977,80 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
     align-self: center
     margin-right: 4px
     color: #782e22
+
+// ===== Реакции игроков (scripts/reactions.js) =====
+.vn-reaction-menu
+    position: fixed
+    z-index: 9400
+    gap: 6px
+    flex-wrap: nowrap
+    pointer-events: all
+
+.vn-reaction-option
+    display: grid
+    place-items: center
+    cursor: pointer
+    background-color: rgba(25, 24, 19, 0.85)
+    border: 2px solid #9f9f9f
+    color: #ffffff
+    font-size: 24px
+    font-weight: 700
+
+// Диалоговое облако: овал + изогнутый хвост снизу слева (SVG-фон). Кончик хвоста (20% / 98% облака)
+// стоит в точке привязки над слотом - облако уходит вправо-вверх от головы персонажа.
+.vn-reaction-bubble
+    position: fixed
+    z-index: 9500
+    display: flex
+    align-items: center
+    justify-content: center
+    width: 72px
+    height: 58px
+    padding: 0 0 18px 6px
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 80'%3E%3Cellipse cx='52' cy='34' rx='46' ry='30' fill='white' stroke='%23191813' stroke-width='2.5'/%3E%3Cpath d='M33 60.4 Q30 72 20 78 Q35 73 43 62.4' fill='white' stroke='%23191813' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat
+    color: #191813
+    font-size: 24px
+    font-weight: 700
+    line-height: 1
+    pointer-events: none
+    --vn-reaction-tip-x: 20%
+    transform: translate(calc(-1 * var(--vn-reaction-tip-x)), -98%)
+    transform-origin: var(--vn-reaction-tip-x) 98%
+    animation: vn-reaction-in 0.25s ease-out both
+    transition: opacity 0.3s ease
+    // Правая сторона - зеркальное облако, чтобы у крайнего справа персонажа оно не уходило за экран
+    &.vn-reaction-right
+        --vn-reaction-tip-x: 80%
+        padding: 0 6px 18px 0
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 80'%3E%3Cellipse cx='48' cy='34' rx='46' ry='30' fill='white' stroke='%23191813' stroke-width='2.5'/%3E%3Cpath d='M67 60.4 Q70 72 80 78 Q65 73 57 62.4' fill='white' stroke='%23191813' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E")
+    &.vn-reaction-out
+        opacity: 0
+
+@keyframes vn-reaction-in
+    from
+        opacity: 0
+        transform: translate(calc(-1 * var(--vn-reaction-tip-x)), -98%) scale(0.5)
+    to
+        opacity: 1
+        transform: translate(calc(-1 * var(--vn-reaction-tip-x)), -98%) scale(1)
+
+// ===== Переход между локациями (scripts/locationTransition.js) =====
+#vn-fx-transition-layer
+    position: absolute
+    inset: 0
+    z-index: 9550
+    background-color: #000000
+    opacity: 0
+    pointer-events: none
+    &.vn-transition-fade
+        transition: opacity var(--vn-transition-half, 500ms) ease
+    &.vn-transition-fade.vn-transition-cover
+        opacity: 1
+    &.vn-transition-curtain
+        opacity: 1
+        transform: translateX(-100%)
+        transition: transform var(--vn-transition-half, 500ms) ease-in-out
+    &.vn-transition-curtain.vn-transition-cover
+        transform: translateX(0)
+    &.vn-transition-curtain.vn-transition-reveal
+        transform: translateX(100%)

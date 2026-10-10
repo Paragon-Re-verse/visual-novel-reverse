@@ -85,6 +85,10 @@
                 <div data-action="createRequest" data-level="2" class="vn-square-button" data-tooltip="{{localize "visual-novel-reverse.buttons.requestSecond"}}"><i class="fa-solid fa-hand vn-request-icon"></i></div>
                 <div data-action="createRequest" data-level="3" class="vn-square-button" data-tooltip="{{localize "visual-novel-reverse.buttons.requestThird"}}"><i class="fa-solid fa-hand-sparkles vn-request-icon"></i></div>
             </div>
+            {{!-- Реакции игроков (scripts/reactions.js) - над кнопками заявок --}}
+            <div class="vn-back-buttons-container flexrow" style="bottom: 80px; left: 20px;{{#unless shownElements.reactions}} display: none;{{/unless}}">
+                <div data-action="reactionMenu" class="vn-square-button" data-tooltip="{{localize "visual-novel-reverse.reactions.button"}}"><i class="fa-regular fa-face-smile vn-request-icon"></i></div>
+            </div>
             <div id="vn-request-body" class="vn-request-body flexrow" style="bottom: 0; left: 215px;">
                 {{#each requests as |request|}}
                     <div class="vn-request-container {{editWindowClass}}" data-action="requestClick" data-id="{{request.id}}" data-charid="{{request.charId}}">
