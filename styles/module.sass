@@ -3687,13 +3687,27 @@ select[name="hostUserId"]
     // приёмом, что и остальные placeholder-элементы этого мокапа (.vsm-UI, .vsm-text-container) -
     // сплошной красный прямоугольник визуально выбивался на фоне пергаментной пунктирной стилистики.
     position: absolute
-    width: 20%
-    height: 14px
+    // Размеры настоящей .vn-bar (ширина 220px, название 15px/18.75px, зазор 2px, трек 16px) в масштабе мокапа -
+    // --vsm-ratio ставит apps/visualSettingsMenu.js
+    display: grid
+    gap: calc(2px * var(--vsm-ratio, 0.7))
+    width: calc(220px * var(--vsm-ratio, 0.7))
+    transform: translate(-50%, 0%)
+    pointer-events: none
+
+.vsm-bar-preview-name
+    font-size: calc(15px * var(--vsm-ratio, 0.7))
+    line-height: calc(18.75px * var(--vsm-ratio, 0.7))
+    font-weight: 700
+    color: #782e22
+    white-space: nowrap
+    overflow: hidden
+
+.vsm-bar-preview-track
+    height: calc(16px * var(--vsm-ratio, 0.7))
     border: 2px dashed #782e22
     border-radius: 4px
     background-color: transparent
-    transform: translate(-50%, 0%)
-    pointer-events: none
 
 .vsm-mover-delete
     align-items: center
@@ -3942,3 +3956,24 @@ select[name="hostUserId"]
 
 .vbc-duplicate-button:hover
     color: #df9446
+
+// ===== Reduced motion (личная настройка reducedMotion, scripts/settings.js) =====
+// Анимации и переходы окна VN завершаются мгновенно (конечные состояния - скрыт/показан, затемнение
+// неактивных и т.д. - сохраняются, т.к. animation-fill-mode остаётся). Вспышки при этом тоже не видны,
+// тряска не запускается вовсе (main.js _applyEffectLocally), прокрутка фона выключена - фон стоит на месте.
+body.vn-reduced-motion #vn-body,
+body.vn-reduced-motion #vn-body *
+    animation-duration: 0.01ms !important
+    animation-iteration-count: 1 !important
+    transition-duration: 0.01ms !important
+
+body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-right,
+body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
+    animation-name: none !important
+
+// Значок полного слепка сцены на карточке пресета локации (apps/locationPicker.js, sceneSnapshotFull)
+.lps-preset-full-snapshot
+    flex: 0 0 auto
+    align-self: center
+    margin-right: 4px
+    color: #782e22

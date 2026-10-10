@@ -3,6 +3,17 @@ import { VNLocation } from '../scripts/locationClass.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 
+// "Слепок сцены целиком" (настройка sceneSnapshotFull): что кроме фона и портретов сохраняет пресет локации
+const SCENE_SNAPSHOT_KEYS = ["barsData", "darkenBack", "bgScroll", "bgBlur", "rowMode", "hideUI", "activeSlots"]
+
+// Без полного слепка пресет хранит только портреты - фильтры (состояние сцены) из них убираются.
+// Автофильтры не сохраняются никогда: ГМ пересчитывает их из состояния актёров (scripts/portraitFilters.js).
+const _snapshotSpeakers = (activeSpeakers, keepFilters) => Object.fromEntries(Object.entries(activeSpeakers).map(([position, speaker]) => {
+    if (!speaker) return [position, speaker]
+    const { autoFilters, filters, ...rest } = speaker
+    return [position, keepFilters ? { ...rest, filters } : rest]
+}))
+
 
 const _getLocationColumns = (locations) => {
     const columns = locations.reduce((columns, location, i) => {
@@ -740,10 +751,17 @@ export class LocationPickerSettings extends FormApplication {
         // Добавить пустой пресет
         async function addPreset(copyPotraits) {
             const settings = getSettings()
+            const isFullSnapshot = copyPotraits && game.settings.get(C.ID, "sceneSnapshotFull")
             const presetData = {
                 locationData: settings.location,
-                portraits: copyPotraits ? settings.activeSpeakers : {},
+                portraits: copyPotraits ? _snapshotSpeakers(settings.activeSpeakers, isFullSnapshot) : {},
                 id: foundry.utils.randomID()
+            }
+            if (isFullSnapshot) {
+                presetData.scene = {
+                    ...Object.fromEntries(SCENE_SNAPSHOT_KEYS.map(key => [key, settings[key]])),
+                    uiPresetId: PresetUIClass.getActivePreset().id
+                }
             }
             const _linkChanges = (changeCurrent || (settings.location.id == id)) && settings.linkChanges
             let locations = changeCurrent ? [settings.location] : [settings.locationList.find(m => m.id == id)]
@@ -771,7 +789,8 @@ export class LocationPickerSettings extends FormApplication {
         })
         // Выбрать пресет
         html.find('.lps-preset-container').on('click', async (event) => {
-            if (event.currentTarget.classList.contains('lps-delete-button') || event.target.classList.contains('lps-delete-button')) return
+            // closest: клик по иконке внутри кнопки удаления раньше применял пресет перед удалением
+            if (event.target.closest('.lps-delete-button')) return
             const settings = getSettings()
             const targetLocation = changeCurrent ? settings.location : settings.locationList.find(m => m.id == id)
             const preset = foundry.utils.deepClone(targetLocation.presets.find(p => p.id == event.currentTarget.dataset.id))
@@ -788,7 +807,21 @@ export class LocationPickerSettings extends FormApplication {
             const newSpeakers = foundry.utils.mergeObject(getEmptyActiveSpeakers(), presetSpeakers)
             settings.activeSpeakers = newSpeakers
             const renderPostitons = Object.keys(newSpeakers).map(pos => `${pos}Portrait`)
-            await requestSettingsUpdate(settings, {renderData: {renderParts: ["headerSlider", ...renderPostitons]}})
+            const renderParts = ["headerSlider", ...renderPostitons]
+            // Пресет, сохранённый полным слепком, восстанавливает и остальное состояние сцены - независимо от
+            // текущего значения sceneSnapshotFull (данные в нём уже есть)
+            if (preset.scene) {
+                SCENE_SNAPSHOT_KEYS.filter(key => key in preset.scene).forEach(key => { settings[key] = preset.scene[key] })
+                renderParts.push("bars", "foreground", "leftSlider", "rightSlider")
+            }
+            await requestSettingsUpdate(settings, {renderData: {renderParts}})
+            // UI-пресет - отдельная world-настройка (presetsUI), её может записать только ГМ.
+            // ponytail: у игрока с правом смены локации UI-пресет из слепка не применяется.
+            const uiPresetId = preset.scene?.uiPresetId
+            const presetsUI = game.settings.get(C.ID, 'presetsUI')
+            if (game.user.isGM && uiPresetId && uiPresetId !== PresetUIClass.getActivePreset().id && presetsUI.presets.some(uiPreset => uiPreset.id === uiPresetId)) {
+                await PresetUIClass.setPreset(uiPresetId)
+            }
         })
         // ПКМ на портрет в пресете скрывает его (при выборе пресета портрет не переносится)
         html.find('.lps-preset-portrait').on('contextmenu', async (event) => {

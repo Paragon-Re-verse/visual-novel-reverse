@@ -1,3 +1,8 @@
+// Автофильтры (настройка autoPortraitFilters, меню "Настройки эффектов"): activeSpeakers[pos].autoFilters -
+// вычисляются ГМом из состояния актёра (HP, статусы) и хранятся отдельно от ручных filters, поэтому
+// "Снять фильтры" в панели их не трогает, а выключение настройки сразу убирает их у всех клиентов.
+import { Constants as C, getSettings } from './const.js';
+
 // Фильтры-эффекты на портретах VN-окна (кровь, грязь, затемнение и т.д.).
 //
 // Хранение: activeSpeakers[pos].filters - массив id из PORTRAIT_FILTERS. Это состояние СЦЕНЫ, а не
@@ -33,6 +38,17 @@ const ROW_LAYER_SHADOW = "drop-shadow(0 10px 18px rgba(0,0,0,.6))"
 export function normalizePortraitFilters(filters) {
     const requested = new Set(Array.isArray(filters) ? filters : [])
     return FILTER_IDS.filter(id => requested.has(id))
+}
+
+// Ручные фильтры + автофильтры (если включены) - то, что реально рисуется на портрете
+export function getEffectiveFilters(speaker) {
+    if (!speaker) return []
+    const autoFilters = game.settings.get(C.ID, "autoPortraitFilters") ? speaker.autoFilters : []
+    return normalizePortraitFilters([...(speaker.filters || []), ...(autoFilters || [])])
+}
+
+export function buildSpeakerFilterCss(speaker) {
+    return buildPortraitFilterCss(getEffectiveFilters(speaker))
 }
 
 export function buildPortraitFilterCss(filters) {
@@ -146,20 +162,20 @@ export function applyPortraitFilters(settingData) {
     ensurePortraitFilterDefs()
     const activeSpeakers = settingData?.activeSpeakers || {}
     Object.values(activeSpeakers).forEach(speaker => {
-        normalizePortraitFilters(speaker?.filters).forEach(id => {
+        getEffectiveFilters(speaker).forEach(id => {
             if (TEXTURE_GENERATORS[id]) ensureBakedTexture(id)
         })
     })
     document.querySelectorAll("#vn-body .vn-portrait").forEach(portraitElement => {
         const position = portraitElement.closest(".vn-pBody")?.dataset.pos
         if (!position) return
-        setFilterIfChanged(portraitElement, buildPortraitFilterCss(activeSpeakers[position]?.filters))
+        setFilterIfChanged(portraitElement, buildSpeakerFilterCss(activeSpeakers[position]))
     })
     // "Режим ряда" рисует собственные <img> (main.js _updateRowLayer) - им тоже нужны фильтры их слота.
     // У этих <img> уже есть CSS-тень (#vn-fx-row-layer img в _injectEffectStyles) - inline filter её
     // перебил бы, поэтому при наличии фильтров дописываем ту же тень в конец.
     document.querySelectorAll("#vn-fx-row-layer img[data-pos]").forEach(rowImageElement => {
-        const filterCss = buildPortraitFilterCss(activeSpeakers[rowImageElement.dataset.pos]?.filters)
+        const filterCss = buildSpeakerFilterCss(activeSpeakers[rowImageElement.dataset.pos])
         if (filterCss) {
             setFilterIfChanged(rowImageElement, `${filterCss} ${ROW_LAYER_SHADOW}`)
         } else {
@@ -167,3 +183,56 @@ export function applyPortraitFilters(settingData) {
         }
     })
 }
+
+// ===== Автофильтры по состоянию персонажа =====
+// Статусы - id из CONFIG.statusEffects (dnd5e). HP - system.attributes.hp (dnd5e); в системах без этого
+// пути (PbtA и т.п.) работают только статусы.
+function computeAutoFilters(actor) {
+    const statuses = actor.statuses ?? new Set()
+    const hasStatus = (...ids) => ids.some(id => statuses.has(id))
+    const hp = actor.system?.attributes?.hp
+    const isBloodied = hp && hp.max > 0 && hp.value > 0 && hp.value / hp.max < 0.5
+    const filters = []
+    if (hasStatus("dead", "petrified")) filters.push("grayscale")
+    else if (hasStatus("unconscious", "sleeping")) filters.push("darken")
+    if (isBloodied || hasStatus("bleeding")) filters.push("blood")
+    if (hasStatus("poisoned")) filters.push("poison")
+    if (hasStatus("invisible", "ethereal")) filters.push("ghost")
+    return normalizePortraitFilters(filters)
+}
+
+// Портрет привязан к актёру по id. У несвязанных токенов (типичные NPC) HP и статусы живут на токене,
+// а не на актёре из каталога - берём токен этого актёра на текущей сцене, если он есть.
+// ponytail: при нескольких несвязанных токенах одного актёра берётся первый; привязка портрета к
+// конкретному токену - если понадобится различать одинаковых NPC.
+function resolveActor(actorId) {
+    const unlinkedToken = canvas?.scene?.tokens?.find(token => token.actorId === actorId && !token.actorLink)
+    return unlinkedToken?.actor || game.actors.get(actorId)
+}
+
+// Пишет только активный ГМ и только при реальном изменении - собственная запись вызывает updateSetting
+// повторно, но второй проход уже ничего не меняет.
+async function syncAutoFilters() {
+    if (!game.users.activeGM?.isSelf) return
+    const isEnabled = game.settings.get(C.ID, "autoPortraitFilters")
+    const settings = getSettings()
+    let hasChanges = false
+    for (const speaker of Object.values(settings.activeSpeakers || {})) {
+        if (!speaker) continue
+        const actor = isEnabled && speaker.id ? resolveActor(speaker.id) : null
+        const autoFilters = actor ? computeAutoFilters(actor) : []
+        if (normalizePortraitFilters(speaker.autoFilters).join() === autoFilters.join()) continue
+        speaker.autoFilters = autoFilters
+        hasChanges = true
+    }
+    if (hasChanges) await game.settings.set(C.ID, "vnData", settings)
+}
+
+export const scheduleAutoFilterSync = foundry.utils.debounce(syncAutoFilters, 150)
+
+for (const hookName of ["updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "updateToken", "canvasReady"]) {
+    Hooks.on(hookName, () => scheduleAutoFilterSync())
+}
+Hooks.on("updateSetting", (setting) => {
+    if (setting.key === `${C.ID}.vnData`) scheduleAutoFilterSync()
+})

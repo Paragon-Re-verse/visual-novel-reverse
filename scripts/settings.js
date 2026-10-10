@@ -1,6 +1,7 @@
 import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, getDefaultPortraitSettingsForType, VNapp } from "./const.js";
 import { VisualNovelDialogues } from "./main.js";
 import { VNLocation } from "./locationClass.js";
+import { applyPortraitFilters, scheduleAutoFilterSync } from "./portraitFilters.js";
 import { addMenuSetting, vndSelectorMenu, RestoreFromBackup, CreateBackup, CustomSlidersSet, PlayersPermissions, ForcedSettingsMigration } from './settingsMenu.js';
 import { localizeConsts } from "./localizeConsts.js";
 import { discordElementActivity, DiscordIntegration } from './discordIntegration.js';
@@ -235,6 +236,35 @@ Hooks.once('init', function() {
     // Показывать все заведённые в пресете bar всегда, либо скрывать конкретный bar до тех пор,
     // пока ГМ впервые не поменяет его значение в панели "Эффекты" (см. vnData.bars, apps/effectsPanel.js)
     registerSettings("barsAlwaysShow", "world", false, Boolean, true)
+    // Автофильтры портретов по состоянию персонажа (HP, статусы) - scripts/portraitFilters.js. Выключение
+    // сразу убирает их у всех: рендер учитывает autoFilters только при включённой настройке.
+    game.settings.register(C.ID, "autoPortraitFilters", {
+        name: game.i18n.localize(`${C.ID}.settings.autoPortraitFilters`),
+        hint: game.i18n.localize(`${C.ID}.settings.autoPortraitFiltersHint`),
+        scope: "world",
+        config: false,
+        type: Boolean,
+        default: false,
+        onChange: () => {
+            applyPortraitFilters(game.settings.get(C.ID, "vnData"))
+            scheduleAutoFilterSync()
+        }
+    })
+    // "Создать пресет из текущей локации" (apps/locationPicker.js) сохраняет сцену целиком: кроме фона и
+    // портретов - фильтры, шкалы, эффекты фона, режим ряда, активные слоты и UI-пресет
+    registerSettings("sceneSnapshotFull", "world", false, Boolean, false)
+    // Reduced motion - личная (client) настройка доступности: класс на body гасит анимации окна VN
+    // (styles/module.css, .vn-reduced-motion), тряска не запускается, вспышки приглушены
+    game.settings.register(C.ID, "reducedMotion", {
+        name: game.i18n.localize(`${C.ID}.settings.reducedMotion`),
+        hint: game.i18n.localize(`${C.ID}.settings.reducedMotionHint`),
+        scope: "client",
+        config: true,
+        type: Boolean,
+        default: false,
+        onChange: (value) => document.body.classList.toggle("vn-reduced-motion", value)
+    })
+    document.body.classList.toggle("vn-reduced-motion", game.settings.get(C.ID, "reducedMotion"))
     // Плейсхолдер фона
     registerSettings("backgroundPlaceholder", "world", false, String, "modules/visual-novel-reverse/templates/assets/placeholderImage.webp", "image")
     // Дефолтная папка для поиска портретов

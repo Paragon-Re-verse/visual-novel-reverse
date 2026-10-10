@@ -127,7 +127,13 @@
             "barChangeSpeed": "Bar fill change speed",
             "barChangeSpeedHint": "Duration of the smooth fill animation when a bar's value changes (Effects panel), in seconds",
             "barsAlwaysShow": "Always show bars",
-            "barsAlwaysShowHint": "If enabled, every bar is shown permanently. If disabled, a bar is hidden unless its own eye toggle (Effects panel) is on, it's a running timer, or it was edited in the last 10 seconds"
+            "barsAlwaysShowHint": "If enabled, every bar is shown permanently. If disabled, a bar is hidden unless its own eye toggle (Effects panel) is on, it's a running timer, or it was edited in the last 10 seconds",
+            "autoPortraitFilters": "Auto filters by character state",
+            "autoPortraitFiltersHint": "Portraits get filters from their actor's state: Blood below 50% HP or when bleeding, Grayscale when dead or petrified, Darken when unconscious or asleep, Poisoned when poisoned, Ghost when invisible or ethereal. They are added to the GM's manual filters, and \"Clear filters\" does not remove them. Unlinked tokens use the token on the current scene.",
+            "sceneSnapshotFull": "Full scene snapshot",
+            "sceneSnapshotFullHint": "\"Create a preset from the current location\" also saves portrait filters, bars, background effects (darkening, scroll, blur), row mode, active slots and the UI preset. Selecting such a preset restores all of it. When disabled, the preset stores only the background and portraits (without filters).",
+            "reducedMotion": "Reduced motion (only for you)",
+            "reducedMotionHint": "Animations and transitions of the Visual Novel window finish instantly, shaking and flashes are not shown, the background does not scroll. Affects only this browser."
         },
         "toolbar": {
             "openVN": "Open Visual Novel window",
@@ -566,7 +572,8 @@
                 "parNamePlaceholder": "For example, what city or country this location is in",
                 "success": "Location has been added",
                 "successUpdate": "Location has been updated"
-            }
+            },
+            "fullSnapshot": "Full scene snapshot: filters, bars, background effects and UI preset are restored too"
         },
         "dialogues": {
             "editWindowTitle": "Editing panel information",
