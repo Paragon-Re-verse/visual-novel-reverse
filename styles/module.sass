@@ -4156,13 +4156,20 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
     .vn-fx-label
         margin-bottom: 0
 
-    .vn-fx-multi-toggle
+    .vn-fx-check-all
         flex: 0 1 auto
-        width: auto
+        display: flex
+        align-items: center
+        gap: 4px
         font-size: 90%
+        cursor: pointer
+        white-space: nowrap
+
+        input
+            margin: 0
 
 .vn-fx-multi-list
-    display: none
+    display: grid
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))
     gap: 2px 8px
     max-height: 160px
@@ -4170,13 +4177,6 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
     padding: 4px
     border: 1px solid #542018
     border-radius: 5px
-
-.vn-fx-multi-on
-    select
-        display: none
-
-    .vn-fx-multi-list
-        display: grid
 
 .vn-fx-multi-item
     display: flex

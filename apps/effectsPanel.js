@@ -4,8 +4,8 @@ import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
 
 // Окно "Эффекты" — быстрый доступ ГМ к визуальным эффектам поверх окна визуальной новеллы:
-// - Тряска спрайта (одного выбранного, нескольких отмеченных или всех активных сразу)
-// - Вспышка света / тьмы (по всему экрану, либо только на выбранных спрайтах)
+// - Тряска спрайта (персонажи отмечаются галочками)
+// - Вспышка света / тьмы (по всему экрану, если никто не отмечен, либо только на отмеченных спрайтах)
 // - Затемнение фона (переключатель, полностью тёмный фон вместо картинки локации)
 // - Режим ряда (переключатель: шапка и плашки сменяются затемнением, все активные персонажи
 //   выстраиваются в один горизонтальный ряд; положение, масштаб и отступы - ползунками)
@@ -25,9 +25,9 @@ const ROW_PREVIEW_INTERVAL_MS = 60
 export class EffectsPanel extends FormApplication {
     static instance = null
 
-    // "Выбрать несколько": для цели эффекта (effect) и фильтров портретов (filter) - включён ли режим
-    // и какие позиции отмечены галочками. Позиции, ушедшие со сцены, снимаются в _syncMultiList.
-    _multi = { effect: { isOn: false, checked: new Set() }, filter: { isOn: false, checked: new Set() } }
+    // Отмеченные галочками персонажи: для цели эффекта (effect) и фильтров портретов (filter).
+    // Позиции, ушедшие со сцены, снимаются в _syncMultiList.
+    _multi = { effect: { checked: new Set() }, filter: { checked: new Set() } }
     // Несохранённая раскладка ряда (ползунки) - null, пока ползунки не трогали
     _rowDraft = null
 
@@ -138,10 +138,6 @@ export class EffectsPanel extends FormApplication {
         }
         const effectTargets = this._getActiveTargets(liveData)
         const stageTargets = this._getStageTargets(liveData)
-        this._syncTargetSelect(html[0].querySelector('.vn-fx-target-select'), effectTargets)
-        const filterSelect = html[0].querySelector('.vn-fx-pfilter-target')
-        const filterTargetAfterSync = this._syncTargetSelect(filterSelect, stageTargets)
-        if (filterTargetAfterSync !== undefined) this.filterTarget = filterTargetAfterSync
         this._syncMultiList(html, "effect", effectTargets)
         this._syncMultiList(html, "filter", stageTargets)
         this._refreshFilterButtons(html, liveData)
@@ -162,37 +158,11 @@ export class EffectsPanel extends FormApplication {
         '.vn-fx-toggle-lockexit': 'lockExit',
     }
 
-    // Перестраивает <option> выпадающего списка (кроме первого - "все"), только если состав изменился.
-    // Если выбранный персонаж ушёл со сцены - выбор возвращается на "все". Возвращает итоговое значение.
-    _syncTargetSelect(selectElement, targets) {
-        if (!selectElement) return undefined
-        const targetsKey = targets.map(target => `${target.pos}:${target.name}`).join("|")
-        if (selectElement.dataset.targetsKey === targetsKey) return selectElement.value
-        selectElement.dataset.targetsKey = targetsKey
-        const previousValue = selectElement.value
-        Array.from(selectElement.options).slice(1).forEach(optionElement => optionElement.remove())
-        targets.forEach(target => {
-            const optionElement = document.createElement('option')
-            optionElement.value = target.pos
-            // textContent, а не innerHTML - имя персонажа вводит пользователь
-            optionElement.textContent = target.name
-            selectElement.appendChild(optionElement)
-        })
-        if (targets.some(target => target.pos === previousValue)) {
-            selectElement.value = previousValue
-        } else {
-            selectElement.value = "all"
-        }
-        return selectElement.value
-    }
-
-    // Галочки "Выбрать несколько" - перестраиваются, только если состав персонажей изменился
+    // Галочки персонажей - перестраиваются, только если состав персонажей изменился
     _syncMultiList(html, scope, targets) {
         const sectionElement = html[0].querySelector(`.vn-fx-target-section[data-scope="${scope}"]`)
         if (!sectionElement) return
         const state = this._multi[scope]
-        sectionElement.classList.toggle('vn-fx-multi-on', state.isOn)
-        sectionElement.querySelector('.vn-fx-multi-toggle')?.classList.toggle('vn-fx-active', state.isOn)
         const targetPositions = new Set(targets.map(target => target.pos))
         state.checked.forEach(position => { if (!targetPositions.has(position)) state.checked.delete(position) })
         const listElement = sectionElement.querySelector('.vn-fx-multi-list')
@@ -222,6 +192,16 @@ export class EffectsPanel extends FormApplication {
         listElement.querySelectorAll('input[type="checkbox"]').forEach(checkboxElement => {
             checkboxElement.checked = state.checked.has(checkboxElement.value)
         })
+        this._syncCheckAll(sectionElement, state, targets.length)
+    }
+
+    // "Отметить всех": отмечена, если отмечены все; "наполовину" - если часть
+    _syncCheckAll(sectionElement, state, targetCount) {
+        const checkAllElement = sectionElement.querySelector('.vn-fx-check-all input')
+        if (!checkAllElement) return
+        checkAllElement.disabled = targetCount === 0
+        checkAllElement.checked = targetCount > 0 && state.checked.size === targetCount
+        checkAllElement.indeterminate = state.checked.size > 0 && state.checked.size < targetCount
     }
 
     // ===== Раскладка режима ряда =====
@@ -343,7 +323,6 @@ export class EffectsPanel extends FormApplication {
     getData(options) {
         const settingData = getSettings()
         return {
-            targets: this._getActiveTargets(settingData),
             darkenBack: !!settingData.darkenBack,
             rowMode: !!settingData.rowMode,
             cleanView: !!settingData.cleanView,
@@ -352,8 +331,6 @@ export class EffectsPanel extends FormApplication {
             bgBlur: !!settingData.bgBlur,
             lockExit: !!settingData.lockExit,
             bars: this._getBarsData(settingData),
-            filterTargets: this._getStageTargets(settingData),
-            filterTarget: this.filterTarget || "all",
             portraitFilters: PORTRAIT_FILTERS.map(filter => ({
                 id: filter.id,
                 icon: filter.icon,
@@ -362,18 +339,13 @@ export class EffectsPanel extends FormApplication {
         }
     }
 
-    // Позиции, к которым применяется фильтр: выбранный слот или все занятые слоты на сцене
+    // Позиции, к которым применяется фильтр: отмеченные галочками персонажи на сцене
     _getFilterPositions(settingData = getSettings()) {
         const stagePositions = this._getStageTargets(settingData).map(target => target.pos)
-        if (this._multi.filter.isOn) return stagePositions.filter(position => this._multi.filter.checked.has(position))
-        if (this.filterTarget && this.filterTarget !== "all") {
-            if (stagePositions.includes(this.filterTarget)) return [this.filterTarget]
-            return []
-        }
-        return stagePositions
+        return stagePositions.filter(position => this._multi.filter.checked.has(position))
     }
 
-    // Кнопка фильтра подсвечена, если фильтр есть у КАЖДОЙ цели (для "всех на сцене" - у всех сразу)
+    // Кнопка фильтра подсвечена, если фильтр есть у КАЖДОГО отмеченного персонажа
     _refreshFilterButtons(html, settingData = { activeSpeakers: peekSetting("activeSpeakers") || {} }) {
         const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
         html[0].querySelectorAll('.vn-fx-pfilter').forEach(buttonElement => {
@@ -389,7 +361,8 @@ export class EffectsPanel extends FormApplication {
         const settingData = getSettings()
         const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
         if (!speakers.length) {
-            ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.${this._multi.filter.isOn ? "noTargetsChecked" : "noFilterTargets"}`))
+            const hasStageTargets = this._getStageTargets(settingData).length > 0
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.${hasStageTargets ? "noTargetsChecked" : "noFilterTargets"}`))
             return
         }
         updateFilters(speakers)
@@ -398,40 +371,39 @@ export class EffectsPanel extends FormApplication {
         await requestSettingsUpdate(settingData)
     }
 
-    // "all", позиция или массив отмеченных позиций; null - в режиме "Выбрать несколько" ничего не отмечено
-    _getSelectedTarget(html) {
-        if (!this._multi.effect.isOn) return html[0].querySelector('.vn-fx-target-select')?.value || "all"
+    // Цель - отмеченные персонажи. Без отметок вспышка идёт на весь экран ("all"), а тряске нужна цель.
+    _triggerEffect(kind) {
         const positions = [...this._multi.effect.checked]
-        if (positions.length) return positions
+        if (positions.length) return triggerVNEffect(kind, positions)
+        if (kind !== "shake") return triggerVNEffect(kind, "all")
         ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.noTargetsChecked`))
-        return null
-    }
-
-    _triggerEffect(html, kind) {
-        const target = this._getSelectedTarget(html)
-        if (target) triggerVNEffect(kind, target)
     }
 
     activateListeners(html) {
         super.activateListeners(html);
 
-        // --- "Выбрать несколько" (цель эффекта и фильтры портретов) ---
+        // --- Галочки персонажей (цель эффекта и фильтры портретов) ---
         html[0].querySelectorAll('.vn-fx-target-section').forEach(sectionElement => {
             const scope = sectionElement.dataset.scope
             const state = this._multi[scope]
-            sectionElement.querySelector('.vn-fx-multi-toggle')?.addEventListener('click', () => {
-                state.isOn = !state.isOn
-                // Включая режим, отмечаем того, кто был выбран в списке
-                const selectedPosition = sectionElement.querySelector('select')?.value
-                if (state.isOn && !state.checked.size && selectedPosition && selectedPosition !== "all") state.checked.add(selectedPosition)
-                this._syncLiveState(html)
-                this._fitHeight()
-            })
-            sectionElement.querySelector('.vn-fx-multi-list')?.addEventListener('change', (event) => {
+            const listElement = sectionElement.querySelector('.vn-fx-multi-list')
+            const getCheckboxes = () => Array.from(listElement.querySelectorAll('input[type="checkbox"]'))
+            listElement.addEventListener('change', (event) => {
                 const checkboxElement = event.target
                 if (checkboxElement.type !== 'checkbox') return
                 if (checkboxElement.checked) state.checked.add(checkboxElement.value)
                 else state.checked.delete(checkboxElement.value)
+                this._syncCheckAll(sectionElement, state, getCheckboxes().length)
+                if (scope === "filter") this._refreshFilterButtons(html)
+            })
+            sectionElement.querySelector('.vn-fx-check-all input')?.addEventListener('change', (event) => {
+                const isChecked = event.currentTarget.checked
+                getCheckboxes().forEach(checkboxElement => {
+                    checkboxElement.checked = isChecked
+                    if (isChecked) state.checked.add(checkboxElement.value)
+                    else state.checked.delete(checkboxElement.value)
+                })
+                this._syncCheckAll(sectionElement, state, getCheckboxes().length)
                 if (scope === "filter") this._refreshFilterButtons(html)
             })
         })
@@ -439,17 +411,17 @@ export class EffectsPanel extends FormApplication {
         // --- Тряска ---
         html.find('.vn-fx-shake').on('click', (event) => {
             event.preventDefault()
-            this._triggerEffect(html, 'shake')
+            this._triggerEffect('shake')
         })
 
         // --- Вспышка света / тьмы ---
         html.find('.vn-fx-flash-light').on('click', (event) => {
             event.preventDefault()
-            this._triggerEffect(html, 'flashLight')
+            this._triggerEffect('flashLight')
         })
         html.find('.vn-fx-flash-dark').on('click', (event) => {
             event.preventDefault()
-            this._triggerEffect(html, 'flashDark')
+            this._triggerEffect('flashDark')
         })
 
         // --- Затемнение фона (переключатель, синхронизируется всем игрокам через настройки) ---
@@ -563,10 +535,6 @@ export class EffectsPanel extends FormApplication {
 
         // --- Фильтры портретов (кровь, грязь, затемнение и т.д., scripts/portraitFilters.js) ---
         this._syncLiveState(html)
-        html.find('.vn-fx-pfilter-target').on('change', (event) => {
-            this.filterTarget = event.currentTarget.value
-            this._refreshFilterButtons(html)
-        })
         html.find('.vn-fx-pfilter').on('click', async (event) => {
             event.preventDefault()
             const filterId = event.currentTarget.dataset.filter
