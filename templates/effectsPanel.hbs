@@ -2,18 +2,12 @@
     <div class="vn-fx-panel-body flexrow">
         <div class="vn-fx-effects-column flexcol">
 
-            {{!-- Цель эффекта: список или "Выбрать несколько" (галочки, apps/effectsPanel.js _syncMultiList) --}}
+            {{!-- Цель эффекта - галочки персонажей (apps/effectsPanel.js _syncMultiList) --}}
             <div class="vn-fx-section vn-fx-target-section" data-scope="effect">
                 <div class="vn-fx-label-row flexrow">
                     <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.targetLabel"}}</label>
-                    <button type="button" class="vn-fx-multi-toggle"><i class="fas fa-list-check"></i> {{localize "visual-novel-reverse.effectsPanel.selectSeveral"}}</button>
+                    <label class="vn-fx-check-all"><input type="checkbox"> {{localize "visual-novel-reverse.effectsPanel.checkAll"}}</label>
                 </div>
-                <select class="vn-fx-target-select">
-                    <option value="all">{{localize "visual-novel-reverse.effectsPanel.allActiveCharacters"}}</option>
-                    {{#each targets as |t|}}
-                        <option value="{{t.pos}}">{{t.name}}</option>
-                    {{/each}}
-                </select>
                 <div class="vn-fx-multi-list"></div>
             </div>
 
@@ -86,14 +80,8 @@
             <div class="vn-fx-section vn-fx-target-section" data-scope="filter">
                 <div class="vn-fx-label-row flexrow">
                     <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.portraitFiltersTitle"}}</label>
-                    <button type="button" class="vn-fx-multi-toggle"><i class="fas fa-list-check"></i> {{localize "visual-novel-reverse.effectsPanel.selectSeveral"}}</button>
+                    <label class="vn-fx-check-all"><input type="checkbox"> {{localize "visual-novel-reverse.effectsPanel.checkAll"}}</label>
                 </div>
-                <select class="vn-fx-pfilter-target">
-                    <option value="all">{{localize "visual-novel-reverse.effectsPanel.allCharactersOnStage"}}</option>
-                    {{#each filterTargets as |target|}}
-                        <option value="{{target.pos}}" {{#if (eq target.pos ../filterTarget)}}selected{{/if}}>{{target.name}}</option>
-                    {{/each}}
-                </select>
                 <div class="vn-fx-multi-list"></div>
             </div>
 
