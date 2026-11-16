@@ -4,7 +4,7 @@ import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 
 // "Слепок сцены целиком" (настройка sceneSnapshotFull): что кроме фона и портретов сохраняет пресет локации
-const SCENE_SNAPSHOT_KEYS = ["barsData", "darkenBack", "bgScroll", "bgBlur", "rowMode", "hideUI", "activeSlots"]
+const SCENE_SNAPSHOT_KEYS = ["barsData", "darkenBack", "bgScroll", "bgBlur", "rowMode", "rowLayout", "hideUI", "cleanView", "activeSlots"]
 
 // Без полного слепка пресет хранит только портреты - фильтры (состояние сцены) из них убираются.
 // Автофильтры не сохраняются никогда: ГМ пересчитывает их из состояния актёров (scripts/portraitFilters.js).

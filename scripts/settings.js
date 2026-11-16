@@ -259,6 +259,13 @@ Hooks.once('init', function() {
     // и его полная длительность в секундах (половина - закрытие, половина - открытие)
     registerSettings("locationTransition", "world", false, String, "fade", null, false, {none: `${C.ID}.settings.locationTransitionNone`, fade: `${C.ID}.settings.locationTransitionFade`, curtain: `${C.ID}.settings.locationTransitionCurtain`})
     registerSettings("locationTransitionSpeed", "world", false, Number, 1, null, false, null, {min: 0.3, max: 3, step: 0.1})
+    // Размер окна "Эффекты" после растягивания за края/углы (apps/effectsPanel.js) - у каждого клиента свой
+    game.settings.register(C.ID, "effectsPanelSize", {
+        scope: "client",
+        config: false,
+        type: Object,
+        default: {},
+    })
     // Reduced motion - личная (client) настройка доступности: класс на body гасит анимации окна VN
     // (styles/module.css, .vn-reduced-motion), тряска не запускается, вспышки приглушены
     game.settings.register(C.ID, "reducedMotion", {
@@ -418,6 +425,11 @@ const defaultVnData = () => {
         // выкидывает из settings любые ключи, которых нет в дефолтном объекте.
         darkenBack: false,
         rowMode: false,
+        // Раскладка режима ряда (ползунки в панели "Эффекты", main.js ROW_LAYOUT_LIMITS / normalizeRowLayout):
+        // сдвиг по горизонтали (vw), отступ снизу (vh), масштаб (%), отступ между портретами (vw)
+        rowLayout: {x: 0, y: 2, scale: 100, gap: 1.5},
+        // "Чистый вид": шапка, плашки и имена скрыты, верхние круглые кнопки остаются (main.js partsClassData)
+        cleanView: false,
         // Медленная прокрутка фона: простой переключатель вкл/выкл (одна кнопка "Прокрутка фона" в
         // панели "Эффекты", apps/effectsPanel.js). Направление и зацикленность/однократность анимации -
         // это отдельные ГМ-настройки bgScrollDirection/bgScrollLoop (registerSettings выше в этом файле,

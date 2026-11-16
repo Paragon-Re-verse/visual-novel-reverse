@@ -2,14 +2,19 @@
     <div class="vn-fx-panel-body flexrow">
         <div class="vn-fx-effects-column flexcol">
 
-            <div class="vn-fx-section">
-                <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.targetLabel"}}</label>
+            {{!-- Цель эффекта: список или "Выбрать несколько" (галочки, apps/effectsPanel.js _syncMultiList) --}}
+            <div class="vn-fx-section vn-fx-target-section" data-scope="effect">
+                <div class="vn-fx-label-row flexrow">
+                    <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.targetLabel"}}</label>
+                    <button type="button" class="vn-fx-multi-toggle"><i class="fas fa-list-check"></i> {{localize "visual-novel-reverse.effectsPanel.selectSeveral"}}</button>
+                </div>
                 <select class="vn-fx-target-select">
                     <option value="all">{{localize "visual-novel-reverse.effectsPanel.allActiveCharacters"}}</option>
                     {{#each targets as |t|}}
                         <option value="{{t.pos}}">{{t.name}}</option>
                     {{/each}}
                 </select>
+                <div class="vn-fx-multi-list"></div>
             </div>
 
             <div class="vn-fx-section vn-fx-row">
@@ -30,6 +35,27 @@
                 <button type="button" class="vn-fx-toggle-row{{#if rowMode}} vn-fx-active{{/if}}">
                     <i class="fas fa-grip-lines"></i> {{localize "visual-novel-reverse.effectsPanel.rowMode"}}
                 </button>
+                <button type="button" class="vn-fx-toggle-cleanview{{#if cleanView}} vn-fx-active{{/if}}">
+                    <i class="fas fa-expand"></i> {{localize "visual-novel-reverse.effectsPanel.cleanView"}}
+                </button>
+            </div>
+
+            {{!-- Раскладка режима ряда - видна, пока режим включён (main.js ROW_LAYOUT_LIMITS, previewRowLayout) --}}
+            <div class="vn-fx-section vn-fx-rowlayout"{{#unless rowMode}} hidden{{/unless}}>
+                <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.rowLayoutTitle"}}</label>
+                {{#each rowLayoutFields as |field|}}
+                    <div class="vn-fx-rowlayout-field">
+                        <span class="vn-fx-rowlayout-name">{{field.label}}</span>
+                        <input type="range" data-key="{{field.key}}" min="{{field.min}}" max="{{field.max}}" step="{{field.step}}" value="{{field.value}}">
+                        <span class="vn-fx-rowlayout-value">{{field.value}}</span>
+                    </div>
+                {{/each}}
+                <div class="vn-fx-row">
+                    <button type="button" class="vn-fx-rowlayout-save"><i class="fas fa-floppy-disk"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutSave"}}</button>
+                    <button type="button" class="vn-fx-rowlayout-cancel"><i class="fas fa-rotate-left"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutCancel"}}</button>
+                    <button type="button" class="vn-fx-rowlayout-default"><i class="fas fa-arrows-to-dot"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutDefault"}}</button>
+                </div>
+                <p class="vn-fx-hint">{{localize "visual-novel-reverse.effectsPanel.rowLayoutHint"}}</p>
             </div>
 
             <div class="vn-fx-section vn-fx-row">
@@ -57,14 +83,18 @@
 
             <hr/>
 
-            <div class="vn-fx-section">
-                <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.portraitFiltersTitle"}}</label>
+            <div class="vn-fx-section vn-fx-target-section" data-scope="filter">
+                <div class="vn-fx-label-row flexrow">
+                    <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.portraitFiltersTitle"}}</label>
+                    <button type="button" class="vn-fx-multi-toggle"><i class="fas fa-list-check"></i> {{localize "visual-novel-reverse.effectsPanel.selectSeveral"}}</button>
+                </div>
                 <select class="vn-fx-pfilter-target">
                     <option value="all">{{localize "visual-novel-reverse.effectsPanel.allCharactersOnStage"}}</option>
                     {{#each filterTargets as |target|}}
                         <option value="{{target.pos}}" {{#if (eq target.pos ../filterTarget)}}selected{{/if}}>{{target.name}}</option>
                     {{/each}}
                 </select>
+                <div class="vn-fx-multi-list"></div>
             </div>
 
             <div class="vn-fx-section vn-fx-pfilter-grid">

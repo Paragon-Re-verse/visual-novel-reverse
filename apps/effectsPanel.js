@@ -1,27 +1,40 @@
 import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
-import { triggerVNEffect, triggerNarrativeText } from '../scripts/main.js';
+import { triggerVNEffect, triggerNarrativeText, previewRowLayout, setRowMode, toggleCleanView, normalizeRowLayout, ROW_LAYOUT_LIMITS } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
 
 // Окно "Эффекты" — быстрый доступ ГМ к визуальным эффектам поверх окна визуальной новеллы:
-// - Тряска спрайта (одного выбранного или всех активных сразу)
-// - Вспышка света / тьмы (по всему экрану, либо только на выбранном спрайте)
+// - Тряска спрайта (одного выбранного, нескольких отмеченных или всех активных сразу)
+// - Вспышка света / тьмы (по всему экрану, либо только на выбранных спрайтах)
 // - Затемнение фона (переключатель, полностью тёмный фон вместо картинки локации)
-// - Режим ряда (переключатель: обычный интерфейс сменяется затемнением,
-//   все активные персонажи выстраиваются в один горизонтальный ряд)
+// - Режим ряда (переключатель: шапка и плашки сменяются затемнением, все активные персонажи
+//   выстраиваются в один горизонтальный ряд; положение, масштаб и отступы - ползунками)
+// - Чистый вид (переключатель: шапка, плашки и имена скрыты, верхние круглые кнопки остаются)
 // - Медленная прокрутка фона (переключатель вкл/выкл; направление и зацикленность анимации
 //   настраиваются отдельно ГМом в "Настройки эффектов" - scripts/settings.js, bgScrollDirection/bgScrollLoop)
 // - Блокировка личного выхода игроков из новеллы (переключатель)
 //
 // Сама логика применения эффектов (DOM/CSS/socket) живёт в scripts/main.js (triggerVNEffect),
 // это окно - только UI поверх неё, чтобы не дублировать код между ГМ-клиентом и обработчиком сокета.
+// Минимальный размер окна при растягивании за края и углы
+const MIN_WIDTH = 360
+const MIN_HEIGHT = 220
+const RESIZE_EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"]
+const ROW_PREVIEW_INTERVAL_MS = 60
+
 export class EffectsPanel extends FormApplication {
     static instance = null
+
+    // "Выбрать несколько": для цели эффекта (effect) и фильтров портретов (filter) - включён ли режим
+    // и какие позиции отмечены галочками. Позиции, ушедшие со сцены, снимаются в _syncMultiList.
+    _multi = { effect: { isOn: false, checked: new Set() }, filter: { isOn: false, checked: new Set() } }
+    // Несохранённая раскладка ряда (ползунки) - null, пока ползунки не трогали
+    _rowDraft = null
 
     // Одно окно на клиента: повторный клик по кнопке поднимает уже открытое, а Hooks.on("updateSetting")
     // ниже знает, какое окно обновлять
     static open() {
-        if (!EffectsPanel.instance) EffectsPanel.instance = new EffectsPanel()
+        if (!EffectsPanel.instance) EffectsPanel.instance = new EffectsPanel({}, EffectsPanel._getSavedSize())
         if (EffectsPanel.instance.rendered) {
             showRenderedWindow(EffectsPanel.instance)
         } else {
@@ -30,9 +43,85 @@ export class EffectsPanel extends FormApplication {
         return EffectsPanel.instance
     }
 
+    // Размер, до которого окно растянули в прошлый раз (у каждого клиента свой)
+    static _getSavedSize() {
+        const size = game.settings.get(C.ID, "effectsPanelSize")
+        return (size?.width > 0 && size?.height > 0) ? { width: size.width, height: size.height } : {}
+    }
+
     async close(options) {
         if (EffectsPanel.instance === this) EffectsPanel.instance = null
+        // Сцена и режимы остаются как есть - откатываются только несохранённые ползунки раскладки ряда
+        if (this._rowDraft) this._cancelRowDraft()
         return super.close(options)
+    }
+
+    async _render(force, options) {
+        await super._render(force, options)
+        this._ensureResizeHandles()
+    }
+
+    // ===== Растягивание окна за края и углы =====
+    // Штатный resizable окон V1 даёт только один уголок справа снизу. Ручки - прямые дети корня окна,
+    // поэтому переживают перерисовку содержимого (.window-content).
+    _ensureResizeHandles() {
+        const appElement = this.element?.[0]
+        if (!appElement || appElement.querySelector(':scope > .vn-fx-resize-handle')) return
+        appElement.classList.toggle('vn-fx-sized', this.options.height !== "auto")
+        RESIZE_EDGES.forEach(edge => {
+            const handleElement = document.createElement('div')
+            handleElement.className = `vn-fx-resize-handle vn-fx-resize-${edge}`
+            handleElement.addEventListener('pointerdown', (event) => this._onResizeStart(event, edge))
+            appElement.appendChild(handleElement)
+        })
+    }
+
+    _onResizeStart(event, edge) {
+        if (event.button !== 0 || this._minimized) return
+        event.preventDefault()
+        event.stopPropagation()
+        const handleElement = event.currentTarget
+        const appElement = this.element[0]
+        handleElement.setPointerCapture(event.pointerId)
+        const start = {
+            x: event.clientX, y: event.clientY,
+            left: this.position.left ?? appElement.offsetLeft, top: this.position.top ?? appElement.offsetTop,
+            width: Number.isFinite(this.position.width) ? this.position.width : appElement.offsetWidth,
+            height: Number.isFinite(this.position.height) ? this.position.height : appElement.offsetHeight,
+        }
+        // С height: "auto" окно V1 сбрасывает высоту при каждом setPosition - после первого растягивания
+        // высота фиксированная
+        this.options.height = start.height
+        appElement.classList.add('vn-fx-sized')
+        const onMove = (moveEvent) => {
+            const deltaX = moveEvent.clientX - start.x
+            const deltaY = moveEvent.clientY - start.y
+            let width = start.width
+            let height = start.height
+            if (edge.includes("e")) width = start.width + deltaX
+            if (edge.includes("w")) width = start.width - deltaX
+            if (edge.includes("s")) height = start.height + deltaY
+            if (edge.includes("n")) height = start.height - deltaY
+            width = Math.min(Math.max(MIN_WIDTH, width), window.innerWidth)
+            height = Math.min(Math.max(MIN_HEIGHT, height), window.innerHeight)
+            const left = edge.includes("w") ? Math.max(0, start.left + start.width - width) : start.left
+            const top = edge.includes("n") ? Math.max(0, start.top + start.height - height) : start.top
+            this.setPosition({ left, top, width, height })
+        }
+        const onEnd = () => {
+            handleElement.removeEventListener('pointermove', onMove)
+            handleElement.removeEventListener('pointerup', onEnd)
+            handleElement.removeEventListener('pointercancel', onEnd)
+            game.settings.set(C.ID, "effectsPanelSize", { width: this.position.width, height: this.position.height })
+        }
+        handleElement.addEventListener('pointermove', onMove)
+        handleElement.addEventListener('pointerup', onEnd)
+        handleElement.addEventListener('pointercancel', onEnd)
+    }
+
+    // Окно, которое ещё не растягивали, подстраивает высоту под содержимое (раздел ряда, галочки)
+    _fitHeight() {
+        if (this.options.height === "auto" && this.rendered && !this._minimized) this.setPosition({ height: "auto" })
     }
 
     // Живое обновление списков персонажей и подсветки фильтров без полной перерисовки окна
@@ -47,13 +136,18 @@ export class EffectsPanel extends FormApplication {
             activeSpeakers: peekSetting("activeSpeakers") || {},
             activeSlots: peekSetting("activeSlots") || {},
         }
-        this._syncTargetSelect(html[0].querySelector('.vn-fx-target-select'), this._getActiveTargets(liveData))
+        const effectTargets = this._getActiveTargets(liveData)
+        const stageTargets = this._getStageTargets(liveData)
+        this._syncTargetSelect(html[0].querySelector('.vn-fx-target-select'), effectTargets)
         const filterSelect = html[0].querySelector('.vn-fx-pfilter-target')
-        const filterTargetAfterSync = this._syncTargetSelect(filterSelect, this._getStageTargets(liveData))
+        const filterTargetAfterSync = this._syncTargetSelect(filterSelect, stageTargets)
         if (filterTargetAfterSync !== undefined) this.filterTarget = filterTargetAfterSync
+        this._syncMultiList(html, "effect", effectTargets)
+        this._syncMultiList(html, "filter", stageTargets)
         this._refreshFilterButtons(html, liveData)
-        // Переключатели тоже сверяются с фактическими данными (их меняют и другие места - напр. закрытие
-        // панели выключает "режим ряда"), а не только с последним кликом в этом окне
+        this._syncRowLayout(html)
+        // Переключатели тоже сверяются с фактическими данными (их меняют и другие места - напр. кнопка
+        // "Чистый вид" в окне VN или выбор пресета локации), а не только с последним кликом в этом окне
         Object.entries(EffectsPanel.TOGGLE_SETTINGS).forEach(([selector, settingKey]) => {
             html[0].querySelector(selector)?.classList.toggle('vn-fx-active', !!peekSetting(settingKey))
         })
@@ -62,6 +156,7 @@ export class EffectsPanel extends FormApplication {
     static TOGGLE_SETTINGS = {
         '.vn-fx-toggle-darken': 'darkenBack',
         '.vn-fx-toggle-row': 'rowMode',
+        '.vn-fx-toggle-cleanview': 'cleanView',
         '.vn-fx-bgscroll-toggle': 'bgScroll',
         '.vn-fx-blur-toggle': 'bgBlur',
         '.vn-fx-toggle-lockexit': 'lockExit',
@@ -89,6 +184,92 @@ export class EffectsPanel extends FormApplication {
             selectElement.value = "all"
         }
         return selectElement.value
+    }
+
+    // Галочки "Выбрать несколько" - перестраиваются, только если состав персонажей изменился
+    _syncMultiList(html, scope, targets) {
+        const sectionElement = html[0].querySelector(`.vn-fx-target-section[data-scope="${scope}"]`)
+        if (!sectionElement) return
+        const state = this._multi[scope]
+        sectionElement.classList.toggle('vn-fx-multi-on', state.isOn)
+        sectionElement.querySelector('.vn-fx-multi-toggle')?.classList.toggle('vn-fx-active', state.isOn)
+        const targetPositions = new Set(targets.map(target => target.pos))
+        state.checked.forEach(position => { if (!targetPositions.has(position)) state.checked.delete(position) })
+        const listElement = sectionElement.querySelector('.vn-fx-multi-list')
+        const targetsKey = targets.map(target => `${target.pos}:${target.name}`).join("|")
+        if (listElement.dataset.targetsKey !== targetsKey) {
+            listElement.dataset.targetsKey = targetsKey
+            listElement.replaceChildren()
+            if (!targets.length) {
+                const emptyElement = document.createElement('p')
+                emptyElement.className = 'vn-fx-hint'
+                emptyElement.textContent = game.i18n.localize(`${C.ID}.effectsPanel.noCharacters`)
+                listElement.appendChild(emptyElement)
+            }
+            targets.forEach(target => {
+                const labelElement = document.createElement('label')
+                labelElement.className = 'vn-fx-multi-item'
+                const checkboxElement = document.createElement('input')
+                checkboxElement.type = 'checkbox'
+                checkboxElement.value = target.pos
+                const nameElement = document.createElement('span')
+                // textContent - имя персонажа вводит пользователь
+                nameElement.textContent = target.name
+                labelElement.append(checkboxElement, nameElement)
+                listElement.appendChild(labelElement)
+            })
+        }
+        listElement.querySelectorAll('input[type="checkbox"]').forEach(checkboxElement => {
+            checkboxElement.checked = state.checked.has(checkboxElement.value)
+        })
+    }
+
+    // ===== Раскладка режима ряда =====
+    _getRowLayoutFields(layout) {
+        const normalizedLayout = normalizeRowLayout(layout)
+        const labels = { x: "rowLayoutX", y: "rowLayoutY", scale: "rowLayoutScale", gap: "rowLayoutGap" }
+        return Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => ({
+            key, ...limit, value: normalizedLayout[key],
+            label: game.i18n.localize(`${C.ID}.effectsPanel.${labels[key]}`),
+        }))
+    }
+
+    _setRowSliders(html, layout) {
+        const normalizedLayout = normalizeRowLayout(layout)
+        html[0].querySelectorAll('.vn-fx-rowlayout input[type="range"]').forEach(inputElement => {
+            inputElement.value = normalizedLayout[inputElement.dataset.key]
+            inputElement.nextElementSibling.textContent = inputElement.value
+        })
+    }
+
+    // Раздел виден, пока включён режим ряда; ползунки без черновика повторяют сохранённую раскладку
+    _syncRowLayout(html) {
+        const sectionElement = html[0].querySelector('.vn-fx-rowlayout')
+        if (!sectionElement) return
+        const isRowMode = !!peekSetting("rowMode")
+        if (!isRowMode && this._rowDraft) this._cancelRowDraft()
+        if (sectionElement.hidden === isRowMode) {
+            sectionElement.hidden = !isRowMode
+            this._fitHeight()
+        }
+        if (!this._rowDraft) this._setRowSliders(html, peekSetting("rowLayout"))
+        sectionElement.querySelector('.vn-fx-rowlayout-save')?.classList.toggle('vn-fx-dirty', !!this._rowDraft)
+    }
+
+    // Превью уходит всем не чаще раза в ROW_PREVIEW_INTERVAL_MS, последнее положение ползунка - всегда
+    _scheduleRowPreview() {
+        if (this._rowPreviewTimer) return
+        this._rowPreviewTimer = setTimeout(() => {
+            this._rowPreviewTimer = null
+            if (this._rowDraft) previewRowLayout(this._rowDraft)
+        }, ROW_PREVIEW_INTERVAL_MS)
+    }
+
+    _cancelRowDraft() {
+        clearTimeout(this._rowPreviewTimer)
+        this._rowPreviewTimer = null
+        this._rowDraft = null
+        previewRowLayout(null)
     }
 
     static get defaultOptions() {
@@ -165,6 +346,8 @@ export class EffectsPanel extends FormApplication {
             targets: this._getActiveTargets(settingData),
             darkenBack: !!settingData.darkenBack,
             rowMode: !!settingData.rowMode,
+            cleanView: !!settingData.cleanView,
+            rowLayoutFields: this._getRowLayoutFields(settingData.rowLayout),
             bgScroll: !!settingData.bgScroll,
             bgBlur: !!settingData.bgBlur,
             lockExit: !!settingData.lockExit,
@@ -182,6 +365,7 @@ export class EffectsPanel extends FormApplication {
     // Позиции, к которым применяется фильтр: выбранный слот или все занятые слоты на сцене
     _getFilterPositions(settingData = getSettings()) {
         const stagePositions = this._getStageTargets(settingData).map(target => target.pos)
+        if (this._multi.filter.isOn) return stagePositions.filter(position => this._multi.filter.checked.has(position))
         if (this.filterTarget && this.filterTarget !== "all") {
             if (stagePositions.includes(this.filterTarget)) return [this.filterTarget]
             return []
@@ -205,7 +389,7 @@ export class EffectsPanel extends FormApplication {
         const settingData = getSettings()
         const speakers = this._getFilterPositions(settingData).map(pos => settingData.activeSpeakers[pos])
         if (!speakers.length) {
-            ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.noFilterTargets`))
+            ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.${this._multi.filter.isOn ? "noTargetsChecked" : "noFilterTargets"}`))
             return
         }
         updateFilters(speakers)
@@ -214,27 +398,58 @@ export class EffectsPanel extends FormApplication {
         await requestSettingsUpdate(settingData)
     }
 
+    // "all", позиция или массив отмеченных позиций; null - в режиме "Выбрать несколько" ничего не отмечено
     _getSelectedTarget(html) {
-        return html[0].querySelector('.vn-fx-target-select')?.value || "all"
+        if (!this._multi.effect.isOn) return html[0].querySelector('.vn-fx-target-select')?.value || "all"
+        const positions = [...this._multi.effect.checked]
+        if (positions.length) return positions
+        ui.notifications.warn(game.i18n.localize(`${C.ID}.effectsPanel.noTargetsChecked`))
+        return null
+    }
+
+    _triggerEffect(html, kind) {
+        const target = this._getSelectedTarget(html)
+        if (target) triggerVNEffect(kind, target)
     }
 
     activateListeners(html) {
         super.activateListeners(html);
 
+        // --- "Выбрать несколько" (цель эффекта и фильтры портретов) ---
+        html[0].querySelectorAll('.vn-fx-target-section').forEach(sectionElement => {
+            const scope = sectionElement.dataset.scope
+            const state = this._multi[scope]
+            sectionElement.querySelector('.vn-fx-multi-toggle')?.addEventListener('click', () => {
+                state.isOn = !state.isOn
+                // Включая режим, отмечаем того, кто был выбран в списке
+                const selectedPosition = sectionElement.querySelector('select')?.value
+                if (state.isOn && !state.checked.size && selectedPosition && selectedPosition !== "all") state.checked.add(selectedPosition)
+                this._syncLiveState(html)
+                this._fitHeight()
+            })
+            sectionElement.querySelector('.vn-fx-multi-list')?.addEventListener('change', (event) => {
+                const checkboxElement = event.target
+                if (checkboxElement.type !== 'checkbox') return
+                if (checkboxElement.checked) state.checked.add(checkboxElement.value)
+                else state.checked.delete(checkboxElement.value)
+                if (scope === "filter") this._refreshFilterButtons(html)
+            })
+        })
+
         // --- Тряска ---
         html.find('.vn-fx-shake').on('click', (event) => {
             event.preventDefault()
-            triggerVNEffect('shake', this._getSelectedTarget(html))
+            this._triggerEffect(html, 'shake')
         })
 
         // --- Вспышка света / тьмы ---
         html.find('.vn-fx-flash-light').on('click', (event) => {
             event.preventDefault()
-            triggerVNEffect('flashLight', this._getSelectedTarget(html))
+            this._triggerEffect(html, 'flashLight')
         })
         html.find('.vn-fx-flash-dark').on('click', (event) => {
             event.preventDefault()
-            triggerVNEffect('flashDark', this._getSelectedTarget(html))
+            this._triggerEffect(html, 'flashDark')
         })
 
         // --- Затемнение фона (переключатель, синхронизируется всем игрокам через настройки) ---
@@ -246,18 +461,54 @@ export class EffectsPanel extends FormApplication {
         })
 
         // --- Режим ряда (переключатель) ---
+        // Прячет шапку и слайдеры и затемняет фон (main.js setRowMode); верхние круглые кнопки остаются.
+        // (Если нужно "затемнение само по себе" без режима ряда - для этого отдельная кнопка выше.)
         html.find('.vn-fx-toggle-row').on('click', async (event) => {
             event.preventDefault()
             const turningOn = !peekSetting("rowMode")
-            // При включении режима ряда прячем обычный интерфейс (как обычная кнопка "Скрыть интерфейс")
-            // и заодно включаем затемнение фона - при выключении оба возвращаются обратно.
-            // (Если нужно "затемнение само по себе" без режима ряда - для этого отдельная кнопка выше.)
             event.currentTarget.classList.toggle('vn-fx-active', turningOn)
             html[0].querySelector('.vn-fx-toggle-darken')?.classList.toggle('vn-fx-active', turningOn)
-            await quickSettingsUpdate(
-                { rowMode: turningOn, hideUI: turningOn, darkenBack: turningOn },
-                { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider", "foreground"] } }
-            )
+            await setRowMode(turningOn)
+        })
+
+        // --- Чистый вид (шапка, плашки и имена скрыты, верхние кнопки остаются) ---
+        html.find('.vn-fx-toggle-cleanview').on('click', async (event) => {
+            event.preventDefault()
+            event.currentTarget.classList.toggle('vn-fx-active', !peekSetting("cleanView"))
+            await toggleCleanView()
+        })
+
+        // --- Раскладка режима ряда: ползунки сразу показывают результат всем (превью по сокету),
+        // "Сохранить" пишет vnData.rowLayout, "Отменить" возвращает сохранённое ---
+        const rowLayoutElement = html[0].querySelector('.vn-fx-rowlayout')
+        const readRowSliders = () => Object.fromEntries(Array.from(rowLayoutElement.querySelectorAll('input[type="range"]'))
+            .map(inputElement => [inputElement.dataset.key, Number(inputElement.value)]))
+        rowLayoutElement?.addEventListener('input', (event) => {
+            if (event.target.type !== 'range') return
+            event.target.nextElementSibling.textContent = event.target.value
+            this._rowDraft = readRowSliders()
+            rowLayoutElement.querySelector('.vn-fx-rowlayout-save')?.classList.add('vn-fx-dirty')
+            this._scheduleRowPreview()
+        })
+        rowLayoutElement?.querySelector('.vn-fx-rowlayout-save')?.addEventListener('click', async (event) => {
+            if (!this._rowDraft) return
+            const rowLayout = normalizeRowLayout(this._rowDraft)
+            clearTimeout(this._rowPreviewTimer)
+            this._rowPreviewTimer = null
+            this._rowDraft = null
+            event.currentTarget.classList.remove('vn-fx-dirty')
+            // Превью снимается у всех само, когда приходит новая сохранённая раскладка (main.js _syncStoredRowLayout)
+            await quickSettingsUpdate({ rowLayout })
+        })
+        rowLayoutElement?.querySelector('.vn-fx-rowlayout-cancel')?.addEventListener('click', () => {
+            if (this._rowDraft) this._cancelRowDraft()
+            this._syncRowLayout(html)
+        })
+        rowLayoutElement?.querySelector('.vn-fx-rowlayout-default')?.addEventListener('click', () => {
+            this._rowDraft = normalizeRowLayout(null)
+            this._setRowSliders(html, this._rowDraft)
+            rowLayoutElement.querySelector('.vn-fx-rowlayout-save')?.classList.add('vn-fx-dirty')
+            this._scheduleRowPreview()
         })
 
         // --- Медленная прокрутка фона (один переключатель вкл/выкл, общий для всех игроков.
