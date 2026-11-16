@@ -250,6 +250,8 @@ Hooks.once('init', function() {
             scheduleAutoFilterSync()
         }
     })
+    // Реплики из чата в режиме ряда: сообщение от лица персонажа в полосе показывается под рамкой (scripts/rowStage.js)
+    registerSettings("talesChatLines", "world", false, Boolean, true)
     // "Создать пресет из текущей локации" (apps/locationPicker.js) сохраняет сцену целиком: кроме фона и
     // портретов - фильтры, шкалы, эффекты фона, режим ряда, активные слоты и UI-пресет
     registerSettings("sceneSnapshotFull", "world", false, Boolean, false)
@@ -425,9 +427,15 @@ const defaultVnData = () => {
         // выкидывает из settings любые ключи, которых нет в дефолтном объекте.
         darkenBack: false,
         rowMode: false,
-        // Раскладка режима ряда (ползунки в панели "Эффекты", main.js ROW_LAYOUT_LIMITS / normalizeRowLayout):
-        // сдвиг по горизонтали (vw), отступ снизу (vh), масштаб (%), отступ между портретами (vw)
-        rowLayout: {x: 0, y: 2, scale: 100, gap: 1.5},
+        // Режим ряда - полоса в стиле Tales of (scripts/rowStage.js). Раскладка - ползунки в панели "Эффекты"
+        // (ROW_LAYOUT_LIMITS): сдвиг по горизонтали (vw), отступ снизу (vh), высота (vh) и ширина (%) полосы,
+        // размер портретов (% высоты полосы), отступ между портретами (vw), затемнение фона (%)
+        rowLayout: {x: 0, y: 4, bandHeight: 32, bandWidth: 80, scale: 130, gap: 0.5, dim: 55},
+        // Тема рамки и фон полосы (normalizeTalesStyle)
+        talesStyle: {theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: ""},
+        // Говорящий (позиция слота) и текущая реплика {pos, name, text, stamp}
+        talesSpeaker: null,
+        talesLine: null,
         // "Чистый вид": шапка, плашки и имена скрыты, верхние круглые кнопки остаются (main.js partsClassData)
         cleanView: false,
         // Медленная прокрутка фона: простой переключатель вкл/выкл (одна кнопка "Прокрутка фона" в
@@ -567,6 +575,12 @@ Hooks.on("ready", async () => {
         // читалась бы как true (!!"off" === true) везде, где бывший вкл/выкл теперь ожидает boolean.
         if (typeof mergedSettings.bgScroll === "string") {
             mergedSettings.bgScroll = (mergedSettings.bgScroll === "left" || mergedSettings.bgScroll === "right")
+        }
+        // Миграция 2.4 -> 2.5: раскладка ряда без полосы (нет bandHeight) - у "масштаба" и "высоты от низа"
+        // теперь другой смысл (размер портрета относительно полосы, отступ полосы снизу), старые значения
+        // дали бы портреты без выхода за рамку. Такая раскладка заменяется значениями по умолчанию.
+        if (settings.rowLayout && !("bandHeight" in settings.rowLayout)) {
+            mergedSettings.rowLayout = defaultVnData().rowLayout
         }
         await game.settings.set(C.ID, "vnData", mergedSettings)
         console.log("VnData updated ✔")

@@ -1,5 +1,6 @@
 import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
-import { triggerVNEffect, triggerNarrativeText, previewRowLayout, setRowMode, toggleCleanView, normalizeRowLayout, ROW_LAYOUT_LIMITS } from '../scripts/main.js';
+import { triggerVNEffect, triggerNarrativeText, toggleCleanView } from '../scripts/main.js';
+import { previewRowLayout, setRowMode, normalizeRowLayout, ROW_LAYOUT_LIMITS, FRAME_THEMES, normalizeTalesStyle, setTalesStyle, sayTalesLine, clearTalesLine } from '../scripts/rowStage.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
 
@@ -7,8 +8,8 @@ import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitF
 // - Тряска спрайта (персонажи отмечаются галочками)
 // - Вспышка света / тьмы (по всему экрану, если никто не отмечен, либо только на отмеченных спрайтах)
 // - Затемнение фона (переключатель, полностью тёмный фон вместо картинки локации)
-// - Режим ряда (переключатель: шапка и плашки сменяются затемнением, все активные персонажи
-//   выстраиваются в один горизонтальный ряд; положение, масштаб и отступы - ползунками)
+// - Режим ряда (переключатель): полоса в стиле Tales of - фон притемняется, активные персонажи стоят
+//   в полосе с рамкой, под ней реплика (scripts/rowStage.js); раскладка - ползунками, рамка и фон полосы
 // - Чистый вид (переключатель: шапка, плашки и имена скрыты, верхние круглые кнопки остаются)
 // - Медленная прокрутка фона (переключатель вкл/выкл; направление и зацикленность анимации
 //   настраиваются отдельно ГМом в "Настройки эффектов" - scripts/settings.js, bgScrollDirection/bgScrollLoop)
@@ -207,7 +208,7 @@ export class EffectsPanel extends FormApplication {
     // ===== Раскладка режима ряда =====
     _getRowLayoutFields(layout) {
         const normalizedLayout = normalizeRowLayout(layout)
-        const labels = { x: "rowLayoutX", y: "rowLayoutY", scale: "rowLayoutScale", gap: "rowLayoutGap" }
+        const labels = { x: "rowLayoutX", y: "rowLayoutY", bandHeight: "rowLayoutBandHeight", bandWidth: "rowLayoutBandWidth", scale: "rowLayoutScale", gap: "rowLayoutGap", dim: "rowLayoutDim" }
         return Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => ({
             key, ...limit, value: normalizedLayout[key],
             label: game.i18n.localize(`${C.ID}.effectsPanel.${labels[key]}`),
@@ -234,6 +235,31 @@ export class EffectsPanel extends FormApplication {
         }
         if (!this._rowDraft) this._setRowSliders(html, peekSetting("rowLayout"))
         sectionElement.querySelector('.vn-fx-rowlayout-save')?.classList.toggle('vn-fx-dirty', !!this._rowDraft)
+        this._syncTalesControls(sectionElement)
+    }
+
+    // Говорящий, тема рамки и фон полосы - их меняют и щелчки по портретам в окне VN, и другие ГМы
+    _syncTalesControls(sectionElement) {
+        const style = normalizeTalesStyle(peekSetting("talesStyle"))
+        sectionElement.querySelectorAll('[data-theme]').forEach(themeElement => {
+            themeElement.classList.toggle('vn-fx-active', themeElement.dataset.theme === style.theme)
+        })
+        const setColorInput = (selector, value) => {
+            const inputElement = sectionElement.querySelector(selector)
+            if (inputElement && document.activeElement !== inputElement) inputElement.value = value
+        }
+        setColorInput('.vn-fx-tales-custom-color', style.customColor)
+        setColorInput('.vn-fx-tales-bg-color', style.bgColor)
+        const clearImageButton = sectionElement.querySelector('.vn-fx-tales-bg-clear')
+        if (clearImageButton) clearImageButton.disabled = !style.bgImage
+        const speakerPosition = peekSetting("talesSpeaker")
+        const speakerName = speakerPosition && peekSetting("activeSpeakers")?.[speakerPosition]?.name
+        const speakerElement = sectionElement.querySelector('.vn-fx-tales-speaker')
+        if (speakerElement) {
+            speakerElement.textContent = speakerName
+                ? game.i18n.format(`${C.ID}.effectsPanel.talesSpeaker`, { name: speakerName })
+                : game.i18n.localize(`${C.ID}.effectsPanel.talesNoSpeaker`)
+        }
     }
 
     // Превью уходит всем не чаще раза в ROW_PREVIEW_INTERVAL_MS, последнее положение ползунка - всегда
@@ -327,6 +353,11 @@ export class EffectsPanel extends FormApplication {
             rowMode: !!settingData.rowMode,
             cleanView: !!settingData.cleanView,
             rowLayoutFields: this._getRowLayoutFields(settingData.rowLayout),
+            talesStyle: normalizeTalesStyle(settingData.talesStyle),
+            frameThemes: Object.entries(FRAME_THEMES).map(([id, color]) => ({
+                id, color,
+                label: game.i18n.localize(`${C.ID}.effectsPanel.talesTheme${id[0].toUpperCase()}${id.slice(1)}`),
+            })),
             bgScroll: !!settingData.bgScroll,
             bgBlur: !!settingData.bgBlur,
             lockExit: !!settingData.lockExit,
@@ -432,16 +463,57 @@ export class EffectsPanel extends FormApplication {
             await quickSettingsUpdate({ darkenBack: next }, { renderData: { renderParts: ["foreground"] } })
         })
 
-        // --- Режим ряда (переключатель) ---
-        // Прячет шапку и слайдеры и затемняет фон (main.js setRowMode); верхние круглые кнопки остаются.
+        // --- Режим ряда (переключатель): полоса в стиле Tales of (scripts/rowStage.js) ---
+        // Прячет шапку и слайдеры и притемняет фон; верхние круглые кнопки остаются.
         // (Если нужно "затемнение само по себе" без режима ряда - для этого отдельная кнопка выше.)
         html.find('.vn-fx-toggle-row').on('click', async (event) => {
             event.preventDefault()
             const turningOn = !peekSetting("rowMode")
             event.currentTarget.classList.toggle('vn-fx-active', turningOn)
-            html[0].querySelector('.vn-fx-toggle-darken')?.classList.toggle('vn-fx-active', turningOn)
+            if (!turningOn) html[0].querySelector('.vn-fx-toggle-darken')?.classList.remove('vn-fx-active')
             await setRowMode(turningOn)
         })
+
+        // --- Реплика под рамкой: "Сказать" (или Ctrl+Enter) и "Убрать реплику" ---
+        const lineInputElement = html[0].querySelector('.vn-fx-tales-line')
+        const sayLine = async () => {
+            const text = lineInputElement?.value.trim()
+            if (!text) return
+            lineInputElement.value = ""
+            await sayTalesLine(text)
+        }
+        html[0].querySelector('.vn-fx-tales-say')?.addEventListener('click', sayLine)
+        lineInputElement?.addEventListener('keydown', (event) => {
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault()
+                sayLine()
+            }
+        })
+        html[0].querySelector('.vn-fx-tales-clear-line')?.addEventListener('click', () => clearTalesLine())
+
+        // --- Рамка и фон полосы - применяются сразу, без "Сохранить" (это не ползунки) ---
+        html[0].querySelectorAll('.vn-fx-tales-theme').forEach(themeButton => {
+            themeButton.addEventListener('click', () => setTalesStyle({ theme: themeButton.dataset.theme }))
+        })
+        // Щелчок по "Свой цвет" сразу включает эту тему, выбор цвета - меняет её цвет
+        html[0].querySelector('.vn-fx-tales-custom-color')?.addEventListener('click', () => {
+            if (normalizeTalesStyle(peekSetting("talesStyle")).theme !== "custom") setTalesStyle({ theme: "custom" })
+        })
+        html[0].querySelector('.vn-fx-tales-custom-color')?.addEventListener('change', (event) => {
+            setTalesStyle({ theme: "custom", customColor: event.currentTarget.value })
+        })
+        html[0].querySelector('.vn-fx-tales-bg-color')?.addEventListener('change', (event) => {
+            setTalesStyle({ bgColor: event.currentTarget.value })
+        })
+        html[0].querySelector('.vn-fx-tales-bg-image')?.addEventListener('click', () => {
+            const FilePickerClass = foundry.applications?.apps?.FilePicker?.implementation ?? FilePicker
+            new FilePickerClass({
+                type: "image",
+                current: normalizeTalesStyle(peekSetting("talesStyle")).bgImage,
+                callback: (path) => setTalesStyle({ bgImage: path }),
+            }).render(true)
+        })
+        html[0].querySelector('.vn-fx-tales-bg-clear')?.addEventListener('click', () => setTalesStyle({ bgImage: "" }))
 
         // --- Чистый вид (шапка, плашки и имена скрыты, верхние кнопки остаются) ---
         html.find('.vn-fx-toggle-cleanview').on('click', async (event) => {

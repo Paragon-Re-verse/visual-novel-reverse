@@ -4223,3 +4223,194 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
 
     .vn-text-box *
         pointer-events: none
+
+// ===== Режим ряда - полоса в стиле Tales of (scripts/rowStage.js) =====
+// CSS-переменные ставит rowStage.js из vnData.rowLayout (ползунки панели "Эффекты") и talesStyle (рамка).
+// Слои полосы снизу вверх: фон -> рамка -> портреты. Портреты выше рамки, поэтому сверху перекрывают её,
+// а снизу их обрезает clip-path по внутренней границе рамки (обрезается только нижний край).
+#vn-fx-row-layer
+    z-index: 20
+    display: none
+    --vn-tales-border: 0.45vh
+
+    &.vn-fx-active
+        display: block
+
+    &.vn-tales-clickable .vn-tales-actor
+        pointer-events: auto
+        cursor: pointer
+
+// Притемнение фона силой rowLayout.dim; включённое "Затемнение фона" по-прежнему затемняет полностью
+#vn-body.vn-row-mode #vn-fx-darken-layer:not(.vn-fx-active)
+    opacity: var(--vn-row-dim, 0.55)
+
+.vn-tales-stage
+    position: absolute
+    left: 50%
+    bottom: calc(var(--vn-row-y, 4) * 1vh)
+    width: calc(var(--vn-row-band-w, 80) * 1%)
+    translate: calc(-50% + var(--vn-row-x, 0) * 1vw) 0
+    display: flex
+    flex-direction: column
+    transition: bottom 0.15s ease, width 0.15s ease, translate 0.15s ease
+
+// Полоса выезжает слева при включении режима; портреты появляются следом
+#vn-fx-row-layer.vn-fx-active .vn-tales-stage
+    animation: vn-tales-slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both
+
+#vn-fx-row-layer.vn-fx-active .vn-tales-actors
+    animation: vn-tales-actors-in 0.5s ease-out 0.45s both
+
+@keyframes vn-tales-slide-in
+    from
+        transform: translateX(-120vw)
+    to
+        transform: none
+
+@keyframes vn-tales-actors-in
+    from
+        opacity: 0
+        transform: translateY(6%)
+    to
+        opacity: 1
+        transform: none
+
+.vn-tales-band
+    position: relative
+    height: calc(var(--vn-row-band-h, 32) * 1vh)
+    transition: height 0.15s ease
+
+.vn-tales-band-bg
+    position: absolute
+    inset: 0
+    border-radius: 0.8vh
+    background-color: #1c1f2b
+    background-size: cover
+    background-position: center
+
+.vn-tales-frame
+    position: absolute
+    inset: 0
+    border: var(--vn-tales-border) solid var(--vn-tales-frame, #c9a24a)
+    border-radius: 0.8vh
+    box-shadow: inset 0 0 0 0.2vh color-mix(in srgb, var(--vn-tales-frame, #c9a24a) 45%, white), inset 0 0 2.5vh rgba(0, 0, 0, 0.55), 0 0 0 0.15vh #000, 0 1vh 2.5vh rgba(0, 0, 0, 0.6)
+    pointer-events: none
+
+.vn-tales-actors
+    position: absolute
+    inset: var(--vn-tales-border)
+    display: flex
+    align-items: flex-end
+    justify-content: center
+    // Только нижний край: сверху и по бокам портреты свободно выходят за рамку
+    clip-path: inset(-300vh -100vw 0 -100vw)
+
+.vn-tales-actor
+    flex: 0 0 auto
+    height: calc(var(--vn-row-scale, 1.3) * 100%)
+    display: flex
+    align-items: flex-end
+    transition: filter 0.3s ease, height 0.15s ease, margin 0.15s ease
+
+    // Отступ - margin, а не gap: gap не бывает отрицательным, а наложение портретов друг на друга нужно
+    & + .vn-tales-actor
+        margin-left: calc(var(--vn-row-gap, 0.5) * 1vw)
+
+    img
+        display: block
+        height: 100%
+        width: auto
+        max-width: none
+        object-fit: contain
+        border: none
+
+// Говорящий выбран - остальные слегка притемнены
+.vn-tales-has-speaker .vn-tales-actor:not(.vn-tales-speaking)
+    filter: brightness(0.55)
+
+.vn-tales-dialogue
+    margin-top: 0.8vh
+    min-height: 6.6em
+    padding: 0.6em 1.2em
+    box-sizing: border-box
+    background: rgba(0, 0, 0, 0.72)
+    border: 1px solid color-mix(in srgb, var(--vn-tales-frame, #c9a24a) 60%, transparent)
+    border-radius: 0.8vh
+    color: #f2f2f2
+    font-size: clamp(14px, 1.15vw, 26px)
+    line-height: 1.4
+    opacity: 0
+    transition: opacity 0.3s ease
+
+    &.vn-tales-has-line
+        opacity: 1
+
+.vn-tales-name
+    font-weight: 700
+    margin-bottom: 0.2em
+    color: color-mix(in srgb, var(--vn-tales-frame, #c9a24a) 70%, white)
+
+.vn-tales-text
+    white-space: pre-wrap
+    overflow-wrap: break-word
+
+// ===== Окно "Эффекты": реплика, рамка и фон полосы =====
+.vn-fx-tales-block
+    margin: 6px 0 10px
+
+.vn-fx-tales-line
+    width: 100%
+    box-sizing: border-box
+    resize: vertical
+    margin-bottom: 4px
+
+.vn-fx-tales-speaker
+    margin: 0 0 4px
+
+.vn-fx-tales-themes
+    display: grid
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr))
+    gap: 4px
+
+.vn-fx-tales-theme,
+.vn-fx-tales-custom
+    display: flex
+    align-items: center
+    justify-content: flex-start
+    gap: 6px
+    margin: 0
+
+.vn-fx-tales-custom
+    cursor: pointer
+    padding: 2px 6px
+    border: 1px solid transparent
+    border-radius: 3px
+
+    input[type="color"]
+        width: 22px
+        height: 22px
+        padding: 0
+        border: none
+
+.vn-fx-tales-swatch
+    flex: 0 0 auto
+    width: 14px
+    height: 14px
+    border-radius: 3px
+    background: var(--vn-swatch)
+    box-shadow: 0 0 0 1px #000, inset 0 0 0 2px color-mix(in srgb, var(--vn-swatch) 45%, white)
+
+.vn-fx-tales-custom.vn-fx-active
+    border-color: #4a7
+    box-shadow: 0 0 0 1px #4a7 inset
+
+.vn-fx-tales-background
+    display: grid
+    grid-template-columns: 40px 1fr 1fr
+    gap: 4px
+    align-items: center
+
+    input[type="color"]
+        width: 100%
+        height: 28px
+        padding: 0

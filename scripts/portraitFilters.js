@@ -32,7 +32,6 @@ export const PORTRAIT_FILTERS = [
 ]
 
 const FILTER_IDS = PORTRAIT_FILTERS.map(filter => filter.id)
-const ROW_LAYER_SHADOW = "drop-shadow(0 10px 18px rgba(0,0,0,.6))"
 
 // Приводит произвольный список к каноническому порядку композиции, отбрасывая неизвестные id
 export function normalizePortraitFilters(filters) {
@@ -171,16 +170,10 @@ export function applyPortraitFilters(settingData) {
         if (!position) return
         setFilterIfChanged(portraitElement, buildSpeakerFilterCss(activeSpeakers[position]))
     })
-    // "Режим ряда" рисует собственные <img> (main.js _updateRowLayer) - им тоже нужны фильтры их слота.
-    // У этих <img> уже есть CSS-тень (#vn-fx-row-layer img в _injectEffectStyles) - inline filter её
-    // перебил бы, поэтому при наличии фильтров дописываем ту же тень в конец.
+    // "Режим ряда" рисует собственные <img> в полосе (scripts/rowStage.js) - им тоже нужны фильтры их слота.
+    // Притемнение не говорящих - filter на обёртке .vn-tales-actor, поэтому с фильтрами портрета не спорит.
     document.querySelectorAll("#vn-fx-row-layer img[data-pos]").forEach(rowImageElement => {
-        const filterCss = buildSpeakerFilterCss(activeSpeakers[rowImageElement.dataset.pos])
-        if (filterCss) {
-            setFilterIfChanged(rowImageElement, `${filterCss} ${ROW_LAYER_SHADOW}`)
-        } else {
-            setFilterIfChanged(rowImageElement, "")
-        }
+        setFilterIfChanged(rowImageElement, buildSpeakerFilterCss(activeSpeakers[rowImageElement.dataset.pos]))
     })
 }
 

@@ -34,8 +34,19 @@
                 </button>
             </div>
 
-            {{!-- Раскладка режима ряда - видна, пока режим включён (main.js ROW_LAYOUT_LIMITS, previewRowLayout) --}}
+            {{!-- Режим ряда (полоса Tales of, scripts/rowStage.js) - раздел виден, пока режим включён --}}
             <div class="vn-fx-section vn-fx-rowlayout"{{#unless rowMode}} hidden{{/unless}}>
+                {{!-- Реплика под рамкой: говорящий - щелчок по портрету в полосе --}}
+                <div class="vn-fx-tales-block">
+                    <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.talesLineTitle"}}</label>
+                    <p class="vn-fx-hint vn-fx-tales-speaker"></p>
+                    <textarea class="vn-fx-tales-line" rows="3" placeholder="{{localize "visual-novel-reverse.effectsPanel.talesLinePlaceholder"}}"></textarea>
+                    <div class="vn-fx-row">
+                        <button type="button" class="vn-fx-tales-say"><i class="fas fa-comment"></i> {{localize "visual-novel-reverse.effectsPanel.talesSay"}}</button>
+                        <button type="button" class="vn-fx-tales-clear-line"><i class="fas fa-comment-slash"></i> {{localize "visual-novel-reverse.effectsPanel.talesClearLine"}}</button>
+                    </div>
+                </div>
+
                 <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.rowLayoutTitle"}}</label>
                 {{#each rowLayoutFields as |field|}}
                     <div class="vn-fx-rowlayout-field">
@@ -50,6 +61,25 @@
                     <button type="button" class="vn-fx-rowlayout-default"><i class="fas fa-arrows-to-dot"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutDefault"}}</button>
                 </div>
                 <p class="vn-fx-hint">{{localize "visual-novel-reverse.effectsPanel.rowLayoutHint"}}</p>
+
+                <div class="vn-fx-tales-block">
+                    <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.talesFrameTitle"}}</label>
+                    <div class="vn-fx-tales-themes">
+                        {{#each frameThemes as |theme|}}
+                            <button type="button" class="vn-fx-tales-theme" data-theme="{{theme.id}}" style="--vn-swatch: {{theme.color}};"><span class="vn-fx-tales-swatch"></span> {{theme.label}}</button>
+                        {{/each}}
+                        <label class="vn-fx-tales-custom" data-theme="custom"><input type="color" class="vn-fx-tales-custom-color" value="{{talesStyle.customColor}}"> {{localize "visual-novel-reverse.effectsPanel.talesThemeCustom"}}</label>
+                    </div>
+                </div>
+
+                <div class="vn-fx-tales-block">
+                    <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.talesBackgroundTitle"}}</label>
+                    <div class="vn-fx-tales-background">
+                        <input type="color" class="vn-fx-tales-bg-color" value="{{talesStyle.bgColor}}" data-tooltip="{{localize "visual-novel-reverse.effectsPanel.talesBackgroundColor"}}">
+                        <button type="button" class="vn-fx-tales-bg-image"><i class="fas fa-image"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundImage"}}</button>
+                        <button type="button" class="vn-fx-tales-bg-clear"><i class="fas fa-xmark"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundClear"}}</button>
+                    </div>
+                </div>
             </div>
 
             <div class="vn-fx-section vn-fx-row">

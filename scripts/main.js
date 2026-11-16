@@ -9,6 +9,7 @@ import { EffectsPanel } from "../apps/effectsPanel.js";
 import { applyPortraitFilters, buildSpeakerFilterCss } from "./portraitFilters.js";
 import { applyVnDataUpdate } from "./locationTransition.js";
 import { receiveReaction, toggleReactionMenu } from "./reactions.js";
+import { updateRowLayer, showRowLayoutPreview, syncStoredRowLayout } from "./rowStage.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 export const _portraitPartsKeys = (fullslots = false) => {
@@ -549,7 +550,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         const fxLayers = _ensureEffectLayers(document.getElementById("vn-body"))
         const fxSettings = getSettings()
         fxLayers.darken.classList.toggle("vn-fx-active", !!fxSettings.darkenBack)
-        _updateRowLayer(fxLayers.row, fxSettings)
+        updateRowLayer(fxLayers.row, fxSettings)
         _applySceneModeClasses(fxSettings)
 
         // - Визуальные эффекты: масштабирование/смещение фона (VNLocation.scale/offsetX/offsetY,
@@ -570,7 +571,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         // визуально идентично центрированному кропу. Ниже в этом же блоке - ещё и размытие фона
         // (переключатель "Блюр фона", сила - настройка bgBlurStrength), см. комментарий в конце блока.
         // Вынесено в отдельную функцию _applyBackgroundVisualEffects() (см. ниже по файлу, рядом с
-        // _updateRowLayer) - она умеет применять эти стили/классы к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image
+        // блоком режима ряда) - она умеет применять эти стили/классы к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image
         // без пересборки DOM, что важно для плавных CSS-transition (см. правку "блюр телепортируется"
         // 2026-08-29 ниже в проектных заметках): Handlebars-рендер части "background" уничтожает и
         // пересоздаёт этот элемент, а transition не может анимировать свойство на только что созданном
@@ -1553,21 +1554,7 @@ function _injectEffectStyles() {
         #vn-fx-flash-layer { z-index: 9000; opacity: 0; }
         #vn-fx-darken-layer { z-index: 5; background: #000; opacity: 0; transition: opacity .6s ease; }
         #vn-fx-darken-layer.vn-fx-active { opacity: 1; }
-        /* Раскладка ряда - CSS-переменные из vnData.rowLayout (ползунки панели "Эффекты", _applyRowLayoutVars).
-           Отступ - margin, а не gap: gap не бывает отрицательным, а наложение портретов друг на друга нужно */
-        #vn-fx-row-layer {
-            z-index: 20; display: none; align-items: flex-end; justify-content: center;
-            padding-bottom: calc(var(--vn-row-y, 2) * 1vh); opacity: 0;
-            transform: translateX(calc(var(--vn-row-x, 0) * 1vw));
-            transition: opacity .6s ease, transform .15s ease, padding-bottom .15s ease;
-        }
-        #vn-fx-row-layer.vn-fx-active { display: flex; opacity: 1; }
-        #vn-fx-row-layer img {
-            max-height: calc(70vh * var(--vn-row-scale, 1)); max-width: calc(18vw * var(--vn-row-scale, 1));
-            object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6));
-            transition: max-height .15s ease, max-width .15s ease, margin .15s ease;
-        }
-        #vn-fx-row-layer img + img { margin-left: calc(var(--vn-row-gap, 1.5) * 1vw); }
+        /* Режим ряда (полоса Tales of) - стили в styles/module.css, раздел "Режим ряда" */
         /* "Нарратив" (кнопка в панели "Эффекты") - полноэкранная одноразовая текстовая вставка:
            чёрный экран + закадровый текст ГМа по центру, курсивом. Плашки VN (шапка #vn-up и оба
            слайдера #vn-left/#vn-right под портретами) прячутся тем же плавным opacity-переходом. */
@@ -1745,92 +1732,7 @@ function _ensureEffectLayers(body) {
     return { flash, darken, row, narrative }
 }
 
-// Перестраивает содержимое слоя "режима ряда" под текущих активных персонажей (только когда режим включён)
-function _updateRowLayer(rowEl, settingData) {
-    if (!rowEl) return
-    const active = !!settingData.rowMode
-    rowEl.classList.toggle("vn-fx-active", active)
-    _applyRowLayoutVars(rowEl, _rowLayoutPreview || settingData.rowLayout)
-    if (!active) {
-        if (rowEl.childElementCount) rowEl.innerHTML = ""
-        return
-    }
-    const speakers = ["left", "right"].flatMap(side =>
-        (settingData.activeSlots?.[side] || [])
-            .map(pos => ({ pos, speaker: settingData.activeSpeakers?.[pos] }))
-            .filter(entry => entry.speaker)
-    )
-    const existingKey = Array.from(rowEl.querySelectorAll("img")).map(img => `${img.dataset.pos}:${img.dataset.src}`).join("|")
-    const wantedKey = speakers.map(entry => `${entry.pos}:${entry.speaker.img}`).join("|")
-    if (existingKey !== wantedKey) {
-        rowEl.innerHTML = ""
-        speakers.forEach(entry => {
-            const img = document.createElement("img")
-            img.src = entry.speaker.img
-            img.dataset.src = entry.speaker.img
-            // data-pos - чтобы applyPortraitFilters (scripts/portraitFilters.js) мог наложить фильтры слота
-            img.dataset.pos = entry.pos
-            rowEl.appendChild(img)
-        })
-    }
-}
-
-// ===== Режим ряда: раскладка (ползунки в панели "Эффекты") =====
-// Сохранённая раскладка - vnData.rowLayout (общая для всех, входит в "Слепок сцены целиком").
-// Пока ГМ двигает ползунки, несохранённый вариант рассылается по сокету (vnRowPreview) и показывается у
-// всех поверх сохранённого; "Отмена" рассылает null - все возвращаются к сохранённому. Любое изменение
-// сохранённой раскладки (сохранение, выбор пресета локации) снимает превью.
-export const ROW_LAYOUT_LIMITS = {
-    x: { min: -50, max: 50, step: 1, default: 0 },
-    y: { min: 0, max: 60, step: 1, default: 2 },
-    scale: { min: 30, max: 200, step: 5, default: 100 },
-    gap: { min: -10, max: 10, step: 0.5, default: 1.5 },
-}
-
-export function normalizeRowLayout(layout) {
-    return Object.fromEntries(Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => {
-        const value = Number(layout?.[key])
-        return [key, Number.isFinite(value) ? Math.min(limit.max, Math.max(limit.min, value)) : limit.default]
-    }))
-}
-
-let _rowLayoutPreview = null
-let _storedRowLayoutKey = null
-
-function _applyRowLayoutVars(rowEl, layout) {
-    if (!rowEl) return
-    const { x, y, scale, gap } = normalizeRowLayout(layout)
-    rowEl.style.setProperty("--vn-row-x", x)
-    rowEl.style.setProperty("--vn-row-y", y)
-    rowEl.style.setProperty("--vn-row-scale", scale / 100)
-    rowEl.style.setProperty("--vn-row-gap", gap)
-}
-
-function _showRowLayoutPreview(layout) {
-    _rowLayoutPreview = layout ? normalizeRowLayout(layout) : null
-    _applyRowLayoutVars(document.getElementById("vn-fx-row-layer"), _rowLayoutPreview || peekSetting("rowLayout"))
-}
-
-// layout - несохранённая раскладка, null - вернуться к сохранённой. Без записи в настройки мира.
-export function previewRowLayout(layout) {
-    _showRowLayoutPreview(layout)
-    game.socket.emit(`module.${C.ID}`, { type: 'vnRowPreview', data: { layout: _rowLayoutPreview } })
-}
-
-function _syncStoredRowLayout(settingData) {
-    const storedKey = JSON.stringify(normalizeRowLayout(settingData.rowLayout))
-    if (_storedRowLayoutKey !== null && storedKey !== _storedRowLayoutKey) _rowLayoutPreview = null
-    _storedRowLayoutKey = storedKey
-}
-
-// Режим ряда прячет шапку и слайдеры (main.js partsClassData) и затемняет фон. Верхние круглые кнопки
-// остаются, поэтому выйти из режима можно и с закрытой панелью "Эффекты".
-export async function setRowMode(isEnabled) {
-    await quickSettingsUpdate(
-        { rowMode: isEnabled, darkenBack: isEnabled },
-        { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider"] } }
-    )
-}
+// Режим ряда (полоса в стиле Tales of) - scripts/rowStage.js
 
 // "Чистый вид": шапка (partsClassData) и плашки с именами (класс vn-clean-view на #vn-body) скрыты
 export async function toggleCleanView() {
@@ -1838,7 +1740,10 @@ export async function toggleCleanView() {
 }
 
 function _applySceneModeClasses(settingData) {
-    document.getElementById("vn-body")?.classList.toggle("vn-clean-view", !!settingData.cleanView)
+    const body = document.getElementById("vn-body")
+    body?.classList.toggle("vn-clean-view", !!settingData.cleanView)
+    // Режим ряда притемняет фон на #vn-fx-darken-layer силой rowLayout.dim (styles/module.css)
+    body?.classList.toggle("vn-row-mode", !!settingData.rowMode)
 }
 
 // Применяет к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image кроп/прокрутку/блюр фона, читая их из текущих
@@ -2061,7 +1966,7 @@ function _normalizeEffectTargets(target) {
     return (Array.isArray(target) ? target : [target]).filter(position => _EFFECT_POSITIONS.has(position))
 }
 
-// Узлы портретов для эффекта: в режиме ряда портреты рисует свой слой (_updateRowLayer), слайдеры скрыты
+// Узлы портретов для эффекта: в режиме ряда портреты рисует свой слой (scripts/rowStage.js), слайдеры скрыты
 function _getEffectTargetElements(body, positions, kind) {
     const rowImages = Array.from(body.querySelectorAll("#vn-fx-row-layer.vn-fx-active img[data-pos]"))
     if (rowImages.length) return positions ? rowImages.filter(img => positions.includes(img.dataset.pos)) : rowImages
@@ -2261,7 +2166,7 @@ Hooks.once("ready", () => {
         } else if (payload?.type === 'vnReaction' && payload.data) {
             receiveReaction(payload.data)
         } else if (payload?.type === 'vnRowPreview' && payload.data) {
-            _showRowLayoutPreview(payload.data.layout)
+            showRowLayoutPreview(payload.data.layout)
         }
     })
 })
@@ -2356,8 +2261,8 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
             // каждое переключение фильтра перезапускало бы их анимацию появления.
             applyPortraitFilters(setting.value)
             // Раскладка ряда и "Чистый вид" - тоже на существующих узлах, без перерисовки
-            _syncStoredRowLayout(setting.value)
-            _updateRowLayer(document.getElementById("vn-fx-row-layer"), setting.value)
+            syncStoredRowLayout(setting.value)
+            updateRowLayer(document.getElementById("vn-fx-row-layer"), setting.value)
             _applySceneModeClasses(setting.value)
             if (diff?.renderData) await VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
         })

@@ -42,7 +42,7 @@ export function showReaction(position, reactionId) {
     const reaction = REACTIONS.find(item => item.id === reactionId)
     const body = document.getElementById("vn-body")
     if (!reaction || !body) return
-    // В режиме ряда портреты рисует собственный слой (main.js _updateRowLayer)
+    // В режиме ряда портреты рисует собственный слой - полоса (scripts/rowStage.js)
     const rowImage = document.querySelector(`#vn-fx-row-layer.vn-fx-active img[data-pos="${position}"]`)
     const slotElement = document.querySelector(`#vn-body .vn-pBody[data-pos="${position}"]`)
     const anchorRect = (rowImage || slotElement)?.getBoundingClientRect()
