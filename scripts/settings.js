@@ -1,4 +1,4 @@
-import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, getDefaultPortraitSettingsForType, VNapp } from "./const.js";
+import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActiveSpeakers, getSettings, peekSetting, selectorArray, defaultPortraitSettings, getDefaultPortraitSettingsForType, getDefaultAutoCreationRuleForType, VNapp } from "./const.js";
 import { VisualNovelDialogues } from "./main.js";
 import { VNLocation } from "./locationClass.js";
 import { applyPortraitFilters, scheduleAutoFilterSync } from "./portraitFilters.js";
@@ -627,10 +627,11 @@ Hooks.on("ready", async () => {
         // Настройки автосоздания Портретов есть по умолчанию только для "character" и "npc" (dnd5e).
         // Типы актёров других систем (например "other" в Powered by the Apocalypse) без записи здесь
         // молча пропускались автосозданием, а их вкладка в меню автосоздания падала на undefined.
+        // Персонажи/NPC других систем (GURPS "enemy") получают то же правило, что и "npc" (const.js).
         const autoPortraitSettingsForTypes = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"))
         const actorTypesWithoutSettings = Actor.TYPES.filter(type => type != "base" && !autoPortraitSettingsForTypes[type])
         if (actorTypesWithoutSettings.length) {
-            actorTypesWithoutSettings.forEach(type => { autoPortraitSettingsForTypes[type] = getDefaultPortraitSettingsForType() })
+            actorTypesWithoutSettings.forEach(type => { autoPortraitSettingsForTypes[type] = getDefaultPortraitSettingsForType(getDefaultAutoCreationRuleForType(type)) })
             await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettingsForTypes)
             console.log(`Auto portrait settings added for actor types: ${actorTypesWithoutSettings.join(", ")} ✔`)
         }
@@ -650,6 +651,24 @@ Hooks.on("ready", async () => {
             }
             oneTimeChecksForTypes.autoPortraitTypesManualOnly = true
             await game.settings.set(C.ID, "oneTimeChecks", oneTimeChecksForTypes)
+        }
+        // До 2.5.2 NPC других систем (GURPS "enemy") заводились с "Только вручную". Один раз переводим на
+        // "При открытии листа" те записи, что остались ровно такими (ГМ их не трогал).
+        const oneTimeChecksForSystemTypes = foundry.utils.deepClone(game.settings.get(C.ID, "oneTimeChecks"))
+        if (!oneTimeChecksForSystemTypes.systemPortraitTypesOpenSheet) {
+            const autoPortraitSettingsToMigrate = foundry.utils.deepClone(game.settings.get(C.ID, "autoPortraitSettings"))
+            const untouchedManualSettings = getDefaultPortraitSettingsForType("manuallyOnly")
+            // "character"/"npc" не трогаем: они всегда создавались с "При открытии листа", и "Только вручную"
+            // у них - выбор ГМа
+            const typesToMigrate = Object.keys(autoPortraitSettingsToMigrate).filter(type => !["character", "npc"].includes(type)
+                && getDefaultAutoCreationRuleForType(type) === "openSheet" && foundry.utils.objectsEqual(autoPortraitSettingsToMigrate[type], untouchedManualSettings))
+            if (typesToMigrate.length) {
+                typesToMigrate.forEach(type => { autoPortraitSettingsToMigrate[type].generalRules.portraitAutoCreationRule = "openSheet" })
+                await game.settings.set(C.ID, "autoPortraitSettings", autoPortraitSettingsToMigrate)
+                console.log(`Auto portrait creation set to "on sheet open" for actor types: ${typesToMigrate.join(", ")} ✔`)
+            }
+            oneTimeChecksForSystemTypes.systemPortraitTypesOpenSheet = true
+            await game.settings.set(C.ID, "oneTimeChecks", oneTimeChecksForSystemTypes)
         }
 
         // Чек штуковин
