@@ -37,6 +37,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             hideVN: VisualNovelDialogues._hideVN,
             openActorSheet: VisualNovelDialogues._openActorSheet,
             toggleUI: this._toggleUI,
+            toggleCleanView: this._toggleCleanView,
             hideBack: this._hideBack,
             discordMenu: this._discordMenu,
             selectorToggle: this._selectorToggle,
@@ -119,11 +120,14 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
     }
 
     // Пиздец
-    partsClassData = {headerSlider: ["slide", "hideUI"], leftSlider: ["slide", "hideUI"], rightSlider: ["slide", "hideUI"], editWindow: ["fade", "editMode"], background: ["fade", "hideBack"], foreground: ["fade", "hideUI"], bars: ["fade", "hideUI"]}
+    // [тип анимации, флаги vnData, любой из которых прячет часть]. "Чистый вид" (cleanView) прячет шапку,
+    // а плашки и имена слайдеров - CSS-классом на #vn-body (портреты внутри слайдеров остаются).
+    // "Режим ряда" прячет шапку и слайдеры целиком (портреты рисует свой слой), но не верхние кнопки.
+    partsClassData = {headerSlider: ["slide", ["hideUI", "cleanView", "rowMode"]], leftSlider: ["slide", ["hideUI", "rowMode"]], rightSlider: ["slide", ["hideUI", "rowMode"]], editWindow: ["fade", ["editMode"]], background: ["fade", ["hideBack"]], foreground: ["fade", ["hideUI"]], bars: ["fade", ["hideUI"]]}
     _getPartClass=(part, settingData = getSettings(), uiData = PresetUIClass.getActivePreset()) => {
         const curState = this.partsState[part]
         const partIsActive = uiData.activeElements[part] || ["editWindow", "background", "foreground", "bars"].includes(part)
-        let partDoesNotHide = !settingData[this.partsClassData[part][1]]
+        let partDoesNotHide = !this.partsClassData[part][1].some(key => settingData[key])
         if (part == "editWindow") partDoesNotHide = !partDoesNotHide
         const newState = (this._canSeeVN(settingData) && partDoesNotHide && partIsActive) ? "shown" : "hidden"
         this.partsState[part] = newState
@@ -158,6 +162,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
 
         const data = {
             hideUI: settingData.hideUI,
+            cleanView: !!settingData.cleanView,
             editMode: settingData.editMode,
             showVN: settingData.showVN && !game.user.getFlag(C.ID, "hideVN")
                 && (game.user.isGM || !settingData.showForIds || settingData.showForIds?.includes(game.user.id))
@@ -545,6 +550,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         const fxSettings = getSettings()
         fxLayers.darken.classList.toggle("vn-fx-active", !!fxSettings.darkenBack)
         _updateRowLayer(fxLayers.row, fxSettings)
+        _applySceneModeClasses(fxSettings)
 
         // - Визуальные эффекты: масштабирование/смещение фона (VNLocation.scale/offsetX/offsetY,
         // диалог "Масштабирование" в LocationPicker) и медленная прокрутка фона (переключатель в панели
@@ -794,13 +800,12 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
     }
     static async _toggleUI(event, target) {
         if (!allowTo("locationChanges")) return
-        // "Режим ряда" (apps/effectsPanel.js, .vn-fx-toggle-row) больше не может остаться
-        // включённым после закрытия панели "Эффекты" (см. Hooks.on("closeEffectsPanel", ...)
-        // ниже в этом файле) - панель сама выключает его при закрытии, так что здесь эта
-        // кнопка снова просто переключает hideUI, без специального случая под rowMode
-        // (раньше он тут был - см. историю правок от 2026-08-27 - но раз "застрять" в режиме
-        // ряда с закрытой панелью теперь невозможно, дублировать в двух местах не нужно).
         await quickSettingsUpdate({hideUI: !peekSetting("hideUI")}, {renderData: {renderParts: ["headerSlider", "leftSlider", "rightSlider", "foreground"]}})
+    }
+    // "Чистый вид": шапка, плашки и имена скрыты, верхние круглые кнопки и угловые кнопки остаются
+    static async _toggleCleanView(event, target) {
+        if (!allowTo("locationChanges")) return
+        await toggleCleanView()
     }
     static async _hideBack(event, target) {
         if (!allowTo("locationChanges")) return
@@ -1548,12 +1553,21 @@ function _injectEffectStyles() {
         #vn-fx-flash-layer { z-index: 9000; opacity: 0; }
         #vn-fx-darken-layer { z-index: 5; background: #000; opacity: 0; transition: opacity .6s ease; }
         #vn-fx-darken-layer.vn-fx-active { opacity: 1; }
+        /* Раскладка ряда - CSS-переменные из vnData.rowLayout (ползунки панели "Эффекты", _applyRowLayoutVars).
+           Отступ - margin, а не gap: gap не бывает отрицательным, а наложение портретов друг на друга нужно */
         #vn-fx-row-layer {
             z-index: 20; display: none; align-items: flex-end; justify-content: center;
-            gap: 1.5vw; padding-bottom: 2vh; opacity: 0; transition: opacity .6s ease;
+            padding-bottom: calc(var(--vn-row-y, 2) * 1vh); opacity: 0;
+            transform: translateX(calc(var(--vn-row-x, 0) * 1vw));
+            transition: opacity .6s ease, transform .15s ease, padding-bottom .15s ease;
         }
         #vn-fx-row-layer.vn-fx-active { display: flex; opacity: 1; }
-        #vn-fx-row-layer img { max-height: 70vh; max-width: 18vw; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6)); }
+        #vn-fx-row-layer img {
+            max-height: calc(70vh * var(--vn-row-scale, 1)); max-width: calc(18vw * var(--vn-row-scale, 1));
+            object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6));
+            transition: max-height .15s ease, max-width .15s ease, margin .15s ease;
+        }
+        #vn-fx-row-layer img + img { margin-left: calc(var(--vn-row-gap, 1.5) * 1vw); }
         /* "Нарратив" (кнопка в панели "Эффекты") - полноэкранная одноразовая текстовая вставка:
            чёрный экран + закадровый текст ГМа по центру, курсивом. Плашки VN (шапка #vn-up и оба
            слайдера #vn-left/#vn-right под портретами) прячутся тем же плавным opacity-переходом. */
@@ -1596,8 +1610,9 @@ function _injectEffectStyles() {
         /* Окно панели "Эффекты" (apps/effectsPanel.js) */
         .vn-fx-panel-app .window-content { padding: 8px; }
         .vn-fx-panel .vn-fx-section { margin-bottom: 8px; }
-        .vn-fx-panel .vn-fx-row { display: flex; gap: 6px; }
-        .vn-fx-panel .vn-fx-row button { flex: 1; }
+        /* Кнопки в ряд делят ширину окна; если не помещаются - переносятся на следующую строку */
+        .vn-fx-panel .vn-fx-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+        .vn-fx-panel .vn-fx-row button { margin: 0; }
         .vn-fx-panel .vn-fx-label { display: block; margin-bottom: 4px; }
         .vn-fx-panel button.vn-fx-active { background: #4a7; color: #fff; }
         .vn-fx-panel .vn-fx-hint { font-size: 11px; opacity: .7; margin-top: 6px; }
@@ -1735,6 +1750,7 @@ function _updateRowLayer(rowEl, settingData) {
     if (!rowEl) return
     const active = !!settingData.rowMode
     rowEl.classList.toggle("vn-fx-active", active)
+    _applyRowLayoutVars(rowEl, _rowLayoutPreview || settingData.rowLayout)
     if (!active) {
         if (rowEl.childElementCount) rowEl.innerHTML = ""
         return
@@ -1757,6 +1773,72 @@ function _updateRowLayer(rowEl, settingData) {
             rowEl.appendChild(img)
         })
     }
+}
+
+// ===== Режим ряда: раскладка (ползунки в панели "Эффекты") =====
+// Сохранённая раскладка - vnData.rowLayout (общая для всех, входит в "Слепок сцены целиком").
+// Пока ГМ двигает ползунки, несохранённый вариант рассылается по сокету (vnRowPreview) и показывается у
+// всех поверх сохранённого; "Отмена" рассылает null - все возвращаются к сохранённому. Любое изменение
+// сохранённой раскладки (сохранение, выбор пресета локации) снимает превью.
+export const ROW_LAYOUT_LIMITS = {
+    x: { min: -50, max: 50, step: 1, default: 0 },
+    y: { min: 0, max: 60, step: 1, default: 2 },
+    scale: { min: 30, max: 200, step: 5, default: 100 },
+    gap: { min: -10, max: 10, step: 0.5, default: 1.5 },
+}
+
+export function normalizeRowLayout(layout) {
+    return Object.fromEntries(Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => {
+        const value = Number(layout?.[key])
+        return [key, Number.isFinite(value) ? Math.min(limit.max, Math.max(limit.min, value)) : limit.default]
+    }))
+}
+
+let _rowLayoutPreview = null
+let _storedRowLayoutKey = null
+
+function _applyRowLayoutVars(rowEl, layout) {
+    if (!rowEl) return
+    const { x, y, scale, gap } = normalizeRowLayout(layout)
+    rowEl.style.setProperty("--vn-row-x", x)
+    rowEl.style.setProperty("--vn-row-y", y)
+    rowEl.style.setProperty("--vn-row-scale", scale / 100)
+    rowEl.style.setProperty("--vn-row-gap", gap)
+}
+
+function _showRowLayoutPreview(layout) {
+    _rowLayoutPreview = layout ? normalizeRowLayout(layout) : null
+    _applyRowLayoutVars(document.getElementById("vn-fx-row-layer"), _rowLayoutPreview || peekSetting("rowLayout"))
+}
+
+// layout - несохранённая раскладка, null - вернуться к сохранённой. Без записи в настройки мира.
+export function previewRowLayout(layout) {
+    _showRowLayoutPreview(layout)
+    game.socket.emit(`module.${C.ID}`, { type: 'vnRowPreview', data: { layout: _rowLayoutPreview } })
+}
+
+function _syncStoredRowLayout(settingData) {
+    const storedKey = JSON.stringify(normalizeRowLayout(settingData.rowLayout))
+    if (_storedRowLayoutKey !== null && storedKey !== _storedRowLayoutKey) _rowLayoutPreview = null
+    _storedRowLayoutKey = storedKey
+}
+
+// Режим ряда прячет шапку и слайдеры (main.js partsClassData) и затемняет фон. Верхние круглые кнопки
+// остаются, поэтому выйти из режима можно и с закрытой панелью "Эффекты".
+export async function setRowMode(isEnabled) {
+    await quickSettingsUpdate(
+        { rowMode: isEnabled, darkenBack: isEnabled },
+        { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider"] } }
+    )
+}
+
+// "Чистый вид": шапка (partsClassData) и плашки с именами (класс vn-clean-view на #vn-body) скрыты
+export async function toggleCleanView() {
+    await quickSettingsUpdate({ cleanView: !peekSetting("cleanView") }, { renderData: { renderParts: ["headerSlider", "foreground"] } })
+}
+
+function _applySceneModeClasses(settingData) {
+    document.getElementById("vn-body")?.classList.toggle("vn-clean-view", !!settingData.cleanView)
 }
 
 // Применяет к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image кроп/прокрутку/блюр фона, читая их из текущих
@@ -1970,13 +2052,32 @@ setInterval(() => {
     })
 }, 1000)
 
+// Цель эффекта: "all", позиция ("leftfirst") или массив позиций ("Выбрать несколько" в панели "Эффекты").
+// Возвращает null для "все" или список допустимых позиций - цель приходит и по сокету, а позиция
+// подставляется в CSS-селектор, поэтому пропускаются только настоящие имена слотов.
+const _EFFECT_POSITIONS = new Set(["left", "right"].flatMap(side => C.numArray.map(index => `${side}${index}`)))
+function _normalizeEffectTargets(target) {
+    if (target === "all") return null
+    return (Array.isArray(target) ? target : [target]).filter(position => _EFFECT_POSITIONS.has(position))
+}
+
+// Узлы портретов для эффекта: в режиме ряда портреты рисует свой слой (_updateRowLayer), слайдеры скрыты
+function _getEffectTargetElements(body, positions, kind) {
+    const rowImages = Array.from(body.querySelectorAll("#vn-fx-row-layer.vn-fx-active img[data-pos]"))
+    if (rowImages.length) return positions ? rowImages.filter(img => positions.includes(img.dataset.pos)) : rowImages
+    if (!positions) return Array.from(body.querySelectorAll(".vn-portrait.vn-main"))
+    return positions.flatMap(position => Array.from(body.querySelectorAll(kind === "shake" ? `.vn-portrait.${position}` : `.vn-portrait.${position} img`)))
+}
+
 // Одноразовое применение эффекта (тряска / вспышка) прямо в DOM, локально на этом клиенте
 // kind: "shake" | "flashLight" | "flashDark"
-// target: "all" - на все активные спрайты (или во весь экран для вспышек) - либо позиция вида "left1"
+// target: "all" - на все активные спрайты (или во весь экран для вспышек), позиция вида "leftfirst" или их массив
 function _applyEffectLocally(kind, target) {
     const body = document.getElementById("vn-body")
     if (!body) return
     const layers = _ensureEffectLayers(body)
+    const positions = _normalizeEffectTargets(target)
+    if (positions && !positions.length) return
 
     if (kind === "shake") {
         // Reduced motion (личная настройка, scripts/settings.js) - тряска у этого клиента не запускается
@@ -1991,9 +2092,7 @@ function _applyEffectLocally(kind, target) {
         // (как и было для конкретной цели) безопасна. Заодно ".vn-portrait.vn-main" - это ровно
         // "активные" портреты (см. portrait.hbs: класс vn-main ставится по speaker.active), так что
         // выбор целей теперь буквально соответствует надписи в дропдауне "Все активные персонажи".
-        const els = target === "all"
-            ? Array.from(body.querySelectorAll(".vn-portrait.vn-main"))
-            : Array.from(body.querySelectorAll(`.vn-portrait.${target}`))
+        const els = _getEffectTargetElements(body, positions, kind)
         els.forEach(el => {
             el.classList.remove("vn-fx-anim-shake")
             void el.offsetWidth // форсируем reflow, чтобы анимацию можно было перезапустить повторным кликом
@@ -2009,7 +2108,7 @@ function _applyEffectLocally(kind, target) {
         // duration-агностична (только % keyframes), длительность выставляем инлайн-стилем перед
         // запуском, он перебивает ".4s"/".5s" из shorthand "animation" в _injectEffectStyles ниже.
         const speed = game.settings.get(C.ID, kind === "flashLight" ? "flashLightSpeed" : "flashDarkSpeed")
-        if (target === "all") {
+        if (!positions) {
             const cls = kind === "flashLight" ? "vn-fx-anim-flash-light" : "vn-fx-anim-flash-dark"
             layers.flash.classList.remove(cls)
             void layers.flash.offsetWidth
@@ -2017,14 +2116,14 @@ function _applyEffectLocally(kind, target) {
             layers.flash.classList.add(cls)
             layers.flash.addEventListener("animationend", () => layers.flash.classList.remove(cls), { once: true })
         } else {
-            const imgEl = body.querySelector(`.vn-portrait.${target} img`)
-            if (!imgEl) return
             const cls = kind === "flashLight" ? "vn-fx-sprite-flash-light" : "vn-fx-sprite-flash-dark"
-            imgEl.classList.remove(cls)
-            void imgEl.offsetWidth
-            imgEl.style.animationDuration = `${speed}s`
-            imgEl.classList.add(cls)
-            imgEl.addEventListener("animationend", () => imgEl.classList.remove(cls), { once: true })
+            _getEffectTargetElements(body, positions, kind).forEach(imgEl => {
+                imgEl.classList.remove(cls)
+                void imgEl.offsetWidth
+                imgEl.style.animationDuration = `${speed}s`
+                imgEl.classList.add(cls)
+                imgEl.addEventListener("animationend", () => imgEl.classList.remove(cls), { once: true })
+            })
         }
     }
 }
@@ -2161,6 +2260,8 @@ Hooks.once("ready", () => {
             _playNarrativeText(payload.data.pages)
         } else if (payload?.type === 'vnReaction' && payload.data) {
             receiveReaction(payload.data)
+        } else if (payload?.type === 'vnRowPreview' && payload.data) {
+            _showRowLayoutPreview(payload.data.layout)
         }
     })
 })
@@ -2254,6 +2355,10 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
             // Фильтры портретов (панель "Эффекты") - тот же приём: без перерисовки портретов, иначе
             // каждое переключение фильтра перезапускало бы их анимацию появления.
             applyPortraitFilters(setting.value)
+            // Раскладка ряда и "Чистый вид" - тоже на существующих узлах, без перерисовки
+            _syncStoredRowLayout(setting.value)
+            _updateRowLayer(document.getElementById("vn-fx-row-layer"), setting.value)
+            _applySceneModeClasses(setting.value)
             if (diff?.renderData) await VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)
         })
     }
@@ -2307,22 +2412,9 @@ Hooks.on("closeVisualSettingsMenu", async (app, html, options) => {
     await VisualSettingsMenu.detailModeChanges(html, false);
 })
 
-// Панель «Эффекты» - единственное место, где можно включить "режим ряда"
-// (apps/effectsPanel.js, .vn-fx-toggle-row). Репорт тестировщика (2026-08-27): если ГМ
-// включает режим ряда и потом просто закрывает панель (не выключив режим явно), выйти из
-// него было нечем - обычный интерфейс скрыт вместе с honeycomb-меню, а переключатель живёт
-// только внутри уже закрытой панели. Решение: закрытие панели "Эффекты" само выключает
-// режим ряда, если он был включён - тем же набором флагов, что и повторный клик по кнопке
-// "Режим ряда" внутри панели (rowMode/hideUI/darkenBack разом в false), так что застрять в
-// этом состоянии больше нельзя в принципе - отдельная кнопка "на выход", которая раньше
-// была нужна на угловой иконке восстановления интерфейса, больше не нужна.
-Hooks.on("closeEffectsPanel", async (app, html, options) => {
-    if (!peekSetting("rowMode")) return
-    await quickSettingsUpdate(
-        {rowMode: false, hideUI: false, darkenBack: false},
-        {renderData: {renderParts: ["headerSlider", "leftSlider", "rightSlider", "foreground"]}}
-    )
-})
+// Закрытие панели "Эффекты" больше не выключает режим ряда: он не прячет верхние круглые кнопки
+// (partsClassData), и из них панель открывается снова. Несохранённые ползунки раскладки ряда
+// откатываются в EffectsPanel.close.
 
 /*
 ——— Текущие действия ———

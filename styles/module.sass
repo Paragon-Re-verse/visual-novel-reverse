@@ -3757,21 +3757,41 @@ select[name="hostUserId"]
     height: 100%
     transition: width var(--vn-bar-speed, 0.6s) ease
 
+// Окно "Эффекты" растягивается за края и углы (apps/effectsPanel.js) - раскладка резиновая: колонки делят
+// ширину, в узком окне шкалы уходят под эффекты (container query по ширине формы)
+.vn-fx-panel
+    container-type: inline-size
+
 .vn-fx-panel-body
     align-items: flex-start
+    flex-wrap: nowrap
     gap: 10px
 
 .vn-fx-effects-column
-    flex: 1
-    min-width: 260px
+    flex: 1 1 0
+    min-width: 0
 
 .vn-fx-bars-column
-    flex: 1
-    min-width: 260px
+    flex: 1 1 0
+    min-width: 0
     border-left: 2px solid #44191a
     padding-left: 10px
+
+// Пока окно не растягивали, оно подстраивает высоту под содержимое - длинный список шкал прокручивается сам
+.vn-fx-panel-app:not(.vn-fx-sized) .vn-fx-bars-column
     max-height: 480px
     overflow-y: auto
+
+// .vn-fx-panel в селекторе - чтобы перебить flex-direction у .flexrow из core-CSS Foundry
+@container (max-width: 560px)
+    .vn-fx-panel .vn-fx-panel-body
+        flex-direction: column
+        align-items: stretch
+    .vn-fx-panel .vn-fx-bars-column
+        border-left: none
+        border-top: 2px solid #44191a
+        padding-left: 0
+        padding-top: 10px
 
 .vn-fx-bars-column-header
     justify-content: space-between
@@ -3869,15 +3889,12 @@ select[name="hostUserId"]
 
 .vn-fx-pfilter-grid
     display: grid
-    grid-template-columns: 1fr 1fr
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr))
     gap: 4px
 
     button
         margin: 0
         text-align: left
-        white-space: nowrap
-        overflow: hidden
-        text-overflow: ellipsis
 
 .vn-fx-pfilter-clear
     grid-column: 1 / -1
@@ -4054,3 +4071,155 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left
         transform: translateX(0)
     &.vn-transition-curtain.vn-transition-reveal
         transform: translateX(100%)
+
+// ===== Окно "Эффекты": растягивание, "Выбрать несколько", раскладка режима ряда (apps/effectsPanel.js) =====
+.vn-fx-panel-app .window-content
+    overflow-y: auto
+
+// Названия кнопок переносятся на новую строку, а не обрезаются
+.vn-fx-panel button
+    height: auto
+    min-height: 28px
+    white-space: normal
+    overflow-wrap: break-word
+    line-height: 1.2
+    padding-top: 4px
+    padding-bottom: 4px
+
+.vn-fx-resize-handle
+    position: absolute
+    z-index: 2
+
+.vn-fx-resize-n,
+.vn-fx-resize-s
+    left: 10px
+    right: 10px
+    height: 6px
+    cursor: ns-resize
+
+.vn-fx-resize-n
+    top: -3px
+
+.vn-fx-resize-s
+    bottom: -3px
+
+.vn-fx-resize-e,
+.vn-fx-resize-w
+    top: 10px
+    bottom: 10px
+    width: 6px
+    cursor: ew-resize
+
+.vn-fx-resize-e
+    right: -3px
+
+.vn-fx-resize-w
+    left: -3px
+
+.vn-fx-resize-ne,
+.vn-fx-resize-nw,
+.vn-fx-resize-se,
+.vn-fx-resize-sw
+    width: 14px
+    height: 14px
+
+.vn-fx-resize-ne
+    top: -4px
+    right: -4px
+    cursor: nesw-resize
+
+.vn-fx-resize-sw
+    bottom: -4px
+    left: -4px
+    cursor: nesw-resize
+
+.vn-fx-resize-nw
+    top: -4px
+    left: -4px
+    cursor: nwse-resize
+
+.vn-fx-resize-se
+    bottom: -4px
+    right: -4px
+    cursor: nwse-resize
+
+.minimized .vn-fx-resize-handle
+    display: none
+
+.vn-fx-label-row
+    align-items: center
+    justify-content: space-between
+    gap: 6px
+    flex-wrap: nowrap
+    margin-bottom: 4px
+
+    .vn-fx-label
+        margin-bottom: 0
+
+    .vn-fx-multi-toggle
+        flex: 0 1 auto
+        width: auto
+        font-size: 90%
+
+.vn-fx-multi-list
+    display: none
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))
+    gap: 2px 8px
+    max-height: 160px
+    overflow-y: auto
+    padding: 4px
+    border: 1px solid #542018
+    border-radius: 5px
+
+.vn-fx-multi-on
+    select
+        display: none
+
+    .vn-fx-multi-list
+        display: grid
+
+.vn-fx-multi-item
+    display: flex
+    align-items: center
+    gap: 4px
+    min-width: 0
+    cursor: pointer
+
+    span
+        overflow-wrap: anywhere
+
+.vn-fx-rowlayout-field
+    display: grid
+    grid-template-columns: minmax(90px, 40%) 1fr 40px
+    align-items: center
+    gap: 6px
+    margin-bottom: 4px
+
+.vn-fx-rowlayout-value
+    text-align: right
+    font-weight: 700
+
+.vn-fx-panel button.vn-fx-dirty
+    box-shadow: 0 0 0 2px #df9446 inset
+
+// Включённый переключатель среди квадратных кнопок окна VN ("Чистый вид")
+.vn-square-button.vn-toggle-on
+    border-color: #df9446
+    box-shadow: 0 0 8px 3px #df944680, 2px 2px 2px 0px #000000bd
+
+// ===== "Чистый вид" (vnData.cleanView, main.js): шапка прячется как часть окна (partsClassData), а плашки и
+// имена слайдеров - здесь; портреты внутри слайдеров и верхние круглые кнопки остаются =====
+.vn-slide-back,
+.vn-slide-top,
+.vn-text-box
+    transition: opacity 0.6s ease
+
+#vn-body.vn-clean-view
+    .vn-slide-back,
+    .vn-slide-top,
+    .vn-text-box
+        opacity: 0
+        pointer-events: none
+
+    .vn-text-box *
+        pointer-events: none
