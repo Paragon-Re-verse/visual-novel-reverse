@@ -429,10 +429,11 @@ const defaultVnData = () => {
         rowMode: false,
         // Режим ряда - полоса в стиле Tales of (scripts/rowStage.js). Раскладка - ползунки в панели "Эффекты"
         // (ROW_LAYOUT_LIMITS): сдвиг по горизонтали (vw), отступ снизу (vh), высота (vh) и ширина (%) полосы,
-        // размер портретов (% высоты полосы), отступ между портретами (vw), затемнение фона (%)
-        rowLayout: {x: 0, y: 4, bandHeight: 32, bandWidth: 80, scale: 130, gap: 0.5, dim: 55},
-        // Тема рамки и фон полосы (normalizeTalesStyle)
-        talesStyle: {theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: ""},
+        // размер портретов (% высоты полосы), отступ между портретами (vw), затемнение фона (%), прозрачность
+        // фона полосы (%). Все ключи обязательны здесь - иначе слияние в "ready" ниже выбросит их из мира
+        rowLayout: {x: 0, y: 4, bandHeight: 32, bandWidth: 80, scale: 130, gap: 0.5, dim: 55, bgTransparency: 0},
+        // Форма полосы, тема рамки и фон полосы (normalizeTalesStyle, STRIP_SHAPES)
+        talesStyle: {shape: "rectangle", theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: ""},
         // Говорящий (позиция слота) и текущая реплика {pos, name, text, stamp}
         talesSpeaker: null,
         talesLine: null,

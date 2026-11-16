@@ -1,6 +1,7 @@
 import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { triggerVNEffect, triggerNarrativeText, toggleCleanView } from '../scripts/main.js';
-import { previewRowLayout, setRowMode, normalizeRowLayout, ROW_LAYOUT_LIMITS, FRAME_THEMES, normalizeTalesStyle, setTalesStyle, sayTalesLine, clearTalesLine } from '../scripts/rowStage.js';
+import { setRowMode, sayTalesLine, clearTalesLine } from '../scripts/rowStage.js';
+import { VisualSettingsMenu } from './visualSettingsMenu.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
 
@@ -21,7 +22,6 @@ import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitF
 const MIN_WIDTH = 360
 const MIN_HEIGHT = 220
 const RESIZE_EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"]
-const ROW_PREVIEW_INTERVAL_MS = 60
 
 export class EffectsPanel extends FormApplication {
     static instance = null
@@ -29,8 +29,6 @@ export class EffectsPanel extends FormApplication {
     // Отмеченные галочками персонажи: для цели эффекта (effect) и фильтров портретов (filter).
     // Позиции, ушедшие со сцены, снимаются в _syncMultiList.
     _multi = { effect: { checked: new Set() }, filter: { checked: new Set() } }
-    // Несохранённая раскладка ряда (ползунки) - null, пока ползунки не трогали
-    _rowDraft = null
 
     // Одно окно на клиента: повторный клик по кнопке поднимает уже открытое, а Hooks.on("updateSetting")
     // ниже знает, какое окно обновлять
@@ -52,8 +50,6 @@ export class EffectsPanel extends FormApplication {
 
     async close(options) {
         if (EffectsPanel.instance === this) EffectsPanel.instance = null
-        // Сцена и режимы остаются как есть - откатываются только несохранённые ползунки раскладки ряда
-        if (this._rowDraft) this._cancelRowDraft()
         return super.close(options)
     }
 
@@ -205,53 +201,16 @@ export class EffectsPanel extends FormApplication {
         checkAllElement.indeterminate = state.checked.size > 0 && state.checked.size < targetCount
     }
 
-    // ===== Раскладка режима ряда =====
-    _getRowLayoutFields(layout) {
-        const normalizedLayout = normalizeRowLayout(layout)
-        const labels = { x: "rowLayoutX", y: "rowLayoutY", bandHeight: "rowLayoutBandHeight", bandWidth: "rowLayoutBandWidth", scale: "rowLayoutScale", gap: "rowLayoutGap", dim: "rowLayoutDim" }
-        return Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => ({
-            key, ...limit, value: normalizedLayout[key],
-            label: game.i18n.localize(`${C.ID}.effectsPanel.${labels[key]}`),
-        }))
-    }
-
-    _setRowSliders(html, layout) {
-        const normalizedLayout = normalizeRowLayout(layout)
-        html[0].querySelectorAll('.vn-fx-rowlayout input[type="range"]').forEach(inputElement => {
-            inputElement.value = normalizedLayout[inputElement.dataset.key]
-            inputElement.nextElementSibling.textContent = inputElement.value
-        })
-    }
-
-    // Раздел виден, пока включён режим ряда; ползунки без черновика повторяют сохранённую раскладку
+    // ===== Режим ряда: раздел с репликой виден, пока режим включён =====
     _syncRowLayout(html) {
         const sectionElement = html[0].querySelector('.vn-fx-rowlayout')
         if (!sectionElement) return
         const isRowMode = !!peekSetting("rowMode")
-        if (!isRowMode && this._rowDraft) this._cancelRowDraft()
         if (sectionElement.hidden === isRowMode) {
             sectionElement.hidden = !isRowMode
             this._fitHeight()
         }
-        if (!this._rowDraft) this._setRowSliders(html, peekSetting("rowLayout"))
-        sectionElement.querySelector('.vn-fx-rowlayout-save')?.classList.toggle('vn-fx-dirty', !!this._rowDraft)
-        this._syncTalesControls(sectionElement)
-    }
-
-    // Говорящий, тема рамки и фон полосы - их меняют и щелчки по портретам в окне VN, и другие ГМы
-    _syncTalesControls(sectionElement) {
-        const style = normalizeTalesStyle(peekSetting("talesStyle"))
-        sectionElement.querySelectorAll('[data-theme]').forEach(themeElement => {
-            themeElement.classList.toggle('vn-fx-active', themeElement.dataset.theme === style.theme)
-        })
-        const setColorInput = (selector, value) => {
-            const inputElement = sectionElement.querySelector(selector)
-            if (inputElement && document.activeElement !== inputElement) inputElement.value = value
-        }
-        setColorInput('.vn-fx-tales-custom-color', style.customColor)
-        setColorInput('.vn-fx-tales-bg-color', style.bgColor)
-        const clearImageButton = sectionElement.querySelector('.vn-fx-tales-bg-clear')
-        if (clearImageButton) clearImageButton.disabled = !style.bgImage
+        // Говорящего меняют и щелчки по портретам в окне VN, и реплики из чата
         const speakerPosition = peekSetting("talesSpeaker")
         const speakerName = speakerPosition && peekSetting("activeSpeakers")?.[speakerPosition]?.name
         const speakerElement = sectionElement.querySelector('.vn-fx-tales-speaker')
@@ -260,22 +219,6 @@ export class EffectsPanel extends FormApplication {
                 ? game.i18n.format(`${C.ID}.effectsPanel.talesSpeaker`, { name: speakerName })
                 : game.i18n.localize(`${C.ID}.effectsPanel.talesNoSpeaker`)
         }
-    }
-
-    // Превью уходит всем не чаще раза в ROW_PREVIEW_INTERVAL_MS, последнее положение ползунка - всегда
-    _scheduleRowPreview() {
-        if (this._rowPreviewTimer) return
-        this._rowPreviewTimer = setTimeout(() => {
-            this._rowPreviewTimer = null
-            if (this._rowDraft) previewRowLayout(this._rowDraft)
-        }, ROW_PREVIEW_INTERVAL_MS)
-    }
-
-    _cancelRowDraft() {
-        clearTimeout(this._rowPreviewTimer)
-        this._rowPreviewTimer = null
-        this._rowDraft = null
-        previewRowLayout(null)
     }
 
     static get defaultOptions() {
@@ -352,12 +295,6 @@ export class EffectsPanel extends FormApplication {
             darkenBack: !!settingData.darkenBack,
             rowMode: !!settingData.rowMode,
             cleanView: !!settingData.cleanView,
-            rowLayoutFields: this._getRowLayoutFields(settingData.rowLayout),
-            talesStyle: normalizeTalesStyle(settingData.talesStyle),
-            frameThemes: Object.entries(FRAME_THEMES).map(([id, color]) => ({
-                id, color,
-                label: game.i18n.localize(`${C.ID}.effectsPanel.talesTheme${id[0].toUpperCase()}${id.slice(1)}`),
-            })),
             bgScroll: !!settingData.bgScroll,
             bgBlur: !!settingData.bgBlur,
             lockExit: !!settingData.lockExit,
@@ -491,68 +428,16 @@ export class EffectsPanel extends FormApplication {
         })
         html[0].querySelector('.vn-fx-tales-clear-line')?.addEventListener('click', () => clearTalesLine())
 
-        // --- Рамка и фон полосы - применяются сразу, без "Сохранить" (это не ползунки) ---
-        html[0].querySelectorAll('.vn-fx-tales-theme').forEach(themeButton => {
-            themeButton.addEventListener('click', () => setTalesStyle({ theme: themeButton.dataset.theme }))
+        // --- Раскладка, форма, рамка и фон полосы - "Настройки эффектов", категория "Режим ряда" ---
+        html[0].querySelector('.vn-fx-tales-open-settings')?.addEventListener('click', () => {
+            VisualSettingsMenu.openEffectsCategory("rowMode")
         })
-        // Щелчок по "Свой цвет" сразу включает эту тему, выбор цвета - меняет её цвет
-        html[0].querySelector('.vn-fx-tales-custom-color')?.addEventListener('click', () => {
-            if (normalizeTalesStyle(peekSetting("talesStyle")).theme !== "custom") setTalesStyle({ theme: "custom" })
-        })
-        html[0].querySelector('.vn-fx-tales-custom-color')?.addEventListener('change', (event) => {
-            setTalesStyle({ theme: "custom", customColor: event.currentTarget.value })
-        })
-        html[0].querySelector('.vn-fx-tales-bg-color')?.addEventListener('change', (event) => {
-            setTalesStyle({ bgColor: event.currentTarget.value })
-        })
-        html[0].querySelector('.vn-fx-tales-bg-image')?.addEventListener('click', () => {
-            const FilePickerClass = foundry.applications?.apps?.FilePicker?.implementation ?? FilePicker
-            new FilePickerClass({
-                type: "image",
-                current: normalizeTalesStyle(peekSetting("talesStyle")).bgImage,
-                callback: (path) => setTalesStyle({ bgImage: path }),
-            }).render(true)
-        })
-        html[0].querySelector('.vn-fx-tales-bg-clear')?.addEventListener('click', () => setTalesStyle({ bgImage: "" }))
 
         // --- Чистый вид (шапка, плашки и имена скрыты, верхние кнопки остаются) ---
         html.find('.vn-fx-toggle-cleanview').on('click', async (event) => {
             event.preventDefault()
             event.currentTarget.classList.toggle('vn-fx-active', !peekSetting("cleanView"))
             await toggleCleanView()
-        })
-
-        // --- Раскладка режима ряда: ползунки сразу показывают результат всем (превью по сокету),
-        // "Сохранить" пишет vnData.rowLayout, "Отменить" возвращает сохранённое ---
-        const rowLayoutElement = html[0].querySelector('.vn-fx-rowlayout')
-        const readRowSliders = () => Object.fromEntries(Array.from(rowLayoutElement.querySelectorAll('input[type="range"]'))
-            .map(inputElement => [inputElement.dataset.key, Number(inputElement.value)]))
-        rowLayoutElement?.addEventListener('input', (event) => {
-            if (event.target.type !== 'range') return
-            event.target.nextElementSibling.textContent = event.target.value
-            this._rowDraft = readRowSliders()
-            rowLayoutElement.querySelector('.vn-fx-rowlayout-save')?.classList.add('vn-fx-dirty')
-            this._scheduleRowPreview()
-        })
-        rowLayoutElement?.querySelector('.vn-fx-rowlayout-save')?.addEventListener('click', async (event) => {
-            if (!this._rowDraft) return
-            const rowLayout = normalizeRowLayout(this._rowDraft)
-            clearTimeout(this._rowPreviewTimer)
-            this._rowPreviewTimer = null
-            this._rowDraft = null
-            event.currentTarget.classList.remove('vn-fx-dirty')
-            // Превью снимается у всех само, когда приходит новая сохранённая раскладка (main.js _syncStoredRowLayout)
-            await quickSettingsUpdate({ rowLayout })
-        })
-        rowLayoutElement?.querySelector('.vn-fx-rowlayout-cancel')?.addEventListener('click', () => {
-            if (this._rowDraft) this._cancelRowDraft()
-            this._syncRowLayout(html)
-        })
-        rowLayoutElement?.querySelector('.vn-fx-rowlayout-default')?.addEventListener('click', () => {
-            this._rowDraft = normalizeRowLayout(null)
-            this._setRowSliders(html, this._rowDraft)
-            rowLayoutElement.querySelector('.vn-fx-rowlayout-save')?.classList.add('vn-fx-dirty')
-            this._scheduleRowPreview()
         })
 
         // --- Медленная прокрутка фона (один переключатель вкл/выкл, общий для всех игроков.

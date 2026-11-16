@@ -4670,23 +4670,6 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left {
   overflow-wrap: anywhere;
 }
 
-.vn-fx-rowlayout-field {
-  display: grid;
-  grid-template-columns: minmax(90px, 40%) 1fr 40px;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.vn-fx-rowlayout-value {
-  text-align: right;
-  font-weight: 700;
-}
-
-.vn-fx-panel button.vn-fx-dirty {
-  box-shadow: 0 0 0 2px #df9446 inset;
-}
-
 .vn-square-button.vn-toggle-on {
   border-color: #df9446;
   box-shadow: 0 0 8px 3px rgba(223, 148, 70, 0.5019607843), 2px 2px 2px 0px rgba(0, 0, 0, 0.7411764706);
@@ -4772,22 +4755,46 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left {
   transition: height 0.15s ease;
 }
 
+/* Форма полосы (talesStyle.shape, STRIP_SHAPES в rowStage.js): фон обрезается многоугольником (clip-path),
+   рамка - SVG-контур той же формы. vector-effect - толщина линии не растягивается вместе с полосой. */
 .vn-tales-band-bg {
   position: absolute;
   inset: 0;
-  border-radius: 0.8vh;
   background-color: #1c1f2b;
   background-size: cover;
   background-position: center;
+  opacity: var(--vn-row-bg-opacity, 1);
+  transition: opacity 0.15s ease;
 }
 
 .vn-tales-frame {
   position: absolute;
   inset: 0;
-  border: var(--vn-tales-border) solid var(--vn-tales-frame, #c9a24a);
-  border-radius: 0.8vh;
-  box-shadow: inset 0 0 0 0.2vh color-mix(in srgb, var(--vn-tales-frame, #c9a24a) 45%, white), inset 0 0 2.5vh rgba(0, 0, 0, 0.55), 0 0 0 0.15vh #000, 0 1vh 2.5vh rgba(0, 0, 0, 0.6);
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   pointer-events: none;
+  filter: drop-shadow(0 0 0.15vh #000) drop-shadow(0 1vh 1.5vh rgba(0, 0, 0, 0.55));
+}
+.vn-tales-frame path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+
+.vn-tales-frame-outer {
+  stroke: var(--vn-tales-frame, #c9a24a);
+  stroke-width: calc(var(--vn-tales-border) * 2);
+}
+
+.vn-tales-frame-inner {
+  stroke: color-mix(in srgb, var(--vn-tales-frame, #c9a24a) 45%, white);
+  stroke-width: 0.15vh;
+}
+
+.vn-tales-fade-edges .vn-tales-band-bg,
+.vn-tales-fade-edges .vn-tales-frame {
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
 }
 
 .vn-tales-actors {
@@ -4851,6 +4858,8 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left {
   overflow-wrap: break-word;
 }
 
+/* ===== Окно "Эффекты": реплика под рамкой полосы; "Настройки эффектов": категории и настройки полосы
+   (apps/rowStyleControls.js) ===== */
 .vn-fx-tales-block {
   margin: 6px 0 10px;
 }
@@ -4866,35 +4875,114 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left {
   margin: 0 0 4px;
 }
 
-.vn-fx-tales-themes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 4px;
+.vsm-settings-list {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
-.vn-fx-tales-theme,
-.vn-fx-tales-custom {
+.vsm-settings-category {
+  border: 1px solid rgba(120, 113, 108, 0.4);
+  border-radius: 8px;
+  margin: 2px 0;
+}
+.vsm-settings-category[open] > .vsm-settings-category-header {
+  border-bottom: 1px solid rgba(120, 113, 108, 0.4);
+}
+
+.vsm-settings-category-header {
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 115%;
+  font-weight: 700;
+  list-style-position: inside;
+}
+.vsm-settings-category-header i {
+  width: 1.2em;
+  text-align: center;
+  margin-right: 4px;
+}
+
+.vsm-settings-category-body {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.vn-row-controls {
+  display: grid;
+  gap: 6px;
+  padding: 4px 3px 6px;
+}
+.vn-row-controls button {
+  margin: 0;
+}
+
+.vn-row-title {
+  margin: 6px 0 0;
+  border: none;
+  font-size: 105%;
+}
+
+.vn-row-field {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.vn-row-field-value {
+  text-align: right;
+  font-weight: 700;
+}
+
+.vn-row-buttons,
+.vn-row-background {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.vn-row-background {
+  grid-template-columns: 44px 1fr 1fr;
+}
+.vn-row-background input[type=color] {
+  width: 100%;
+  height: 28px;
+  padding: 0;
+}
+
+.vn-row-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.vn-row-choice {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
-  margin: 0;
-}
-
-.vn-fx-tales-custom {
-  cursor: pointer;
+  min-height: 28px;
   padding: 2px 6px;
   border: 1px solid transparent;
   border-radius: 3px;
 }
-.vn-fx-tales-custom input[type=color] {
+.vn-row-choice.vn-row-active {
+  border-color: #4a7;
+  box-shadow: 0 0 0 1px #4a7 inset;
+}
+
+.vn-row-custom {
+  cursor: pointer;
+}
+.vn-row-custom input[type=color] {
   width: 22px;
   height: 22px;
   padding: 0;
   border: none;
 }
 
-.vn-fx-tales-swatch {
+.vn-row-swatch {
   flex: 0 0 auto;
   width: 14px;
   height: 14px;
@@ -4903,19 +4991,21 @@ body.vn-reduced-motion #vn-background-image.vn-fx-bgscroll-left {
   box-shadow: 0 0 0 1px #000, inset 0 0 0 2px color-mix(in srgb, var(--vn-swatch) 45%, white);
 }
 
-.vn-fx-tales-custom.vn-fx-active {
-  border-color: #4a7;
-  box-shadow: 0 0 0 1px #4a7 inset;
+.vn-row-shape-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 14px;
+}
+.vn-row-shape-icon polygon {
+  fill: #78716c;
+  stroke: #1c1917;
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+.vn-row-shape-icon.vn-row-shape-faded {
+  mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent);
 }
 
-.vn-fx-tales-background {
-  display: grid;
-  grid-template-columns: 40px 1fr 1fr;
-  gap: 4px;
-  align-items: center;
-}
-.vn-fx-tales-background input[type=color] {
-  width: 100%;
-  height: 28px;
-  padding: 0;
+.vn-row-save.vn-row-dirty {
+  box-shadow: 0 0 0 2px #df9446 inset;
 }
