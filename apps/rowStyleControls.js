@@ -1,11 +1,12 @@
-// Настройки полосы режима ряда (scripts/rowStage.js) в меню "Настройки эффектов" -> категория "Режим ряда"
-// (apps/visualSettingsMenu.js, templates/visualSettingsMenu.hbs). Это состояние сцены (vnData), а не
-// game.settings, поэтому у блока свои кнопки:
-// - ползунки раскладки сразу показывают результат всем (превью по сокету), "Сохранить" пишет rowLayout,
+// Раскладки режима ряда и режима окон (scripts/rowStage.js) в меню "Настройки эффектов" -> категории "Режим
+// ряда" и "Режим окон" (apps/visualSettingsMenu.js, templates/visualSettingsMenu.hbs). Это состояние сцены
+// (vnData), а не game.settings, поэтому у блока свои кнопки:
+// - ползунки раскладки сразу показывают результат всем (превью по сокету), "Сохранить" пишет раскладку,
 //   "Отменить" возвращает сохранённое, "По умолчанию" ставит значения по умолчанию (до сохранения);
-// - форма полосы, тема рамки и фон применяются сразу.
+// - в режиме окон форма полосы, тема рамки и фон применяются сразу.
+// target - "row" или "window" (LAYOUTS в rowStage.js).
 import { Constants as C, peekSetting, quickSettingsUpdate } from '../scripts/const.js';
-import { ROW_LAYOUT_LIMITS, normalizeRowLayout, previewRowLayout, FRAME_THEMES, STRIP_SHAPES, normalizeTalesStyle, setTalesStyle } from '../scripts/rowStage.js';
+import { LAYOUTS, normalizeLayout, previewLayout, FRAME_THEMES, STRIP_SHAPES, normalizeTalesStyle, setTalesStyle } from '../scripts/rowStage.js';
 
 const PREVIEW_INTERVAL_MS = 60
 
@@ -13,17 +14,22 @@ const FIELD_LABELS = {
     x: "rowLayoutX", y: "rowLayoutY", bandHeight: "rowLayoutBandHeight", bandWidth: "rowLayoutBandWidth",
     scale: "rowLayoutScale", gap: "rowLayoutGap", dim: "rowLayoutDim", bgTransparency: "rowLayoutBgTransparency",
 }
+const LAYOUT_TITLES = { row: "rowLayoutRowTitle", window: "rowLayoutTitle" }
 
 const capitalize = (text) => text[0].toUpperCase() + text.slice(1)
 
-// Данные для шаблона
-export function getRowControlsData(settingData) {
-    const layout = normalizeRowLayout(settingData.rowLayout)
+// Данные для шаблона; у режима ряда - только ползунки (style и прочее - для режима окон)
+export function getRowControlsData(target, settingData) {
+    const { key: layoutKey, limits } = LAYOUTS[target]
+    const layout = normalizeLayout(target, settingData[layoutKey])
+    const fields = Object.entries(limits).map(([key, limit]) => ({
+        key, ...limit, value: layout[key],
+        label: game.i18n.localize(`${C.ID}.effectsPanel.${FIELD_LABELS[key]}`),
+    }))
+    const title = game.i18n.localize(`${C.ID}.effectsPanel.${LAYOUT_TITLES[target]}`)
+    if (target !== "window") return { target, title, fields }
     return {
-        fields: Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => ({
-            key, ...limit, value: layout[key],
-            label: game.i18n.localize(`${C.ID}.effectsPanel.${FIELD_LABELS[key]}`),
-        })),
+        target, title, fields,
         // Значок формы - тот же многоугольник в рамке 100x40
         shapes: Object.entries(STRIP_SHAPES).map(([id, shape]) => ({
             id, fadeEdges: !!shape.fadeEdges,
@@ -45,6 +51,8 @@ export class RowStyleControls {
 
     constructor(rootElement) {
         this.root = rootElement
+        this.target = rootElement.dataset.target in LAYOUTS ? rootElement.dataset.target : "window"
+        this.layoutKey = LAYOUTS[this.target].key
         this.#activateListeners()
         // Раскладку и стиль меняют и другие места: пресет локации со слепком, другой ГМ
         this.#hookId = Hooks.on("updateSetting", (setting) => {
@@ -62,7 +70,7 @@ export class RowStyleControls {
     }
 
     #setSliders(layout) {
-        const normalizedLayout = normalizeRowLayout(layout)
+        const normalizedLayout = normalizeLayout(this.target, layout)
         this.#getSliders().forEach(inputElement => {
             inputElement.value = normalizedLayout[inputElement.dataset.rowKey]
             inputElement.nextElementSibling.textContent = inputElement.value
@@ -75,7 +83,7 @@ export class RowStyleControls {
         if (this.#previewTimer) return
         this.#previewTimer = setTimeout(() => {
             this.#previewTimer = null
-            if (this.draft) previewRowLayout(this.draft)
+            if (this.draft) previewLayout(this.target, this.draft)
         }, PREVIEW_INTERVAL_MS)
     }
 
@@ -87,23 +95,23 @@ export class RowStyleControls {
 
     async saveDraft() {
         if (!this.draft) return
-        const rowLayout = normalizeRowLayout(this.draft)
+        const layout = normalizeLayout(this.target, this.draft)
         this.#clearDraft()
-        // Превью снимается у всех само, когда приходит новая сохранённая раскладка (rowStage.js syncStoredRowLayout)
-        await quickSettingsUpdate({ rowLayout })
+        // Превью снимается у всех само, когда приходит новая сохранённая раскладка (rowStage.js syncStoredLayouts)
+        await quickSettingsUpdate({ [this.layoutKey]: layout })
         this.sync()
     }
 
     cancelDraft() {
         if (!this.draft) return
         this.#clearDraft()
-        previewRowLayout(null)
+        previewLayout(this.target, null)
         this.sync()
     }
 
     sync() {
         if (!this.root.isConnected) return
-        if (!this.draft) this.#setSliders(peekSetting("rowLayout"))
+        if (!this.draft) this.#setSliders(peekSetting(this.layoutKey))
         this.root.querySelector('.vn-row-save')?.classList.toggle('vn-row-dirty', !!this.draft)
         const style = normalizeTalesStyle(peekSetting("talesStyle"))
         this.root.querySelectorAll('[data-shape]').forEach(element => {
@@ -138,7 +146,7 @@ export class RowStyleControls {
         this.root.querySelector('.vn-row-save')?.addEventListener('click', () => this.saveDraft())
         this.root.querySelector('.vn-row-cancel')?.addEventListener('click', () => this.cancelDraft())
         this.root.querySelector('.vn-row-default')?.addEventListener('click', () => {
-            this.draft = normalizeRowLayout(null)
+            this.draft = normalizeLayout(this.target, null)
             this.#setSliders(this.draft)
             this.#schedulePreview()
         })

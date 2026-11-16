@@ -40,6 +40,10 @@
             <input class="vn-edit-title" type="text" placeholder="{{localize "visual-novel-reverse.placeholders.actorTitle"}}" value="{{editActorData.title}}">
         </div>
     </div>
+    {{!-- Режим окон: ползунки и "Отразить" правят спрайт только для этого режима (windowSprite) --}}
+    {{#if editWindowMode}}
+        <div class="vn-ew-mode-badge"><i class="fas fa-window-maximize"></i> {{localize "visual-novel-reverse.vn-edit.windowModeBadge"}}</div>
+    {{/if}}
     {{!-- Поле смены масштаба и смещения редактируемого персонажа --}}
     <div class="vn-edit-slider-container">
         {{!-- Размер --}}
@@ -77,7 +81,8 @@
                 <label for="vn-edit-mirrorX">{{localize "visual-novel-reverse.vn-edit.mirrorX"}}</label>
                 <input id="vn-edit-mirrorX" type="checkbox" name="mirrorX" {{#if editActorData.mirrorX}}checked{{/if}}>
             </div>
-            <div class="form-fields">
+            {{!-- В полосе режима окон рамки слайдера нет --}}
+            <div class="form-fields"{{#if editWindowMode}} hidden{{/if}}>
                 <label for="vn-edit-widthEqualFrame">{{localize "visual-novel-reverse.vn-edit.widthEqualFrameWidth"}}</label>
                 <input id="vn-edit-widthEqualFrame" type="checkbox" name="widthEqualFrame" {{#if editActorData.widthEqualFrame}}checked{{/if}}>
             </div>

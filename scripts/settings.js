@@ -2,6 +2,7 @@ import { Constants as C, allowTo, createBackup, defaultPermissions, getEmptyActi
 import { VisualNovelDialogues } from "./main.js";
 import { VNLocation } from "./locationClass.js";
 import { applyPortraitFilters, scheduleAutoFilterSync } from "./portraitFilters.js";
+import { getLegacyWindowState } from "./rowStage.js";
 import { addMenuSetting, vndSelectorMenu, RestoreFromBackup, CreateBackup, CustomSlidersSet, PlayersPermissions, ForcedSettingsMigration } from './settingsMenu.js';
 import { localizeConsts } from "./localizeConsts.js";
 import { discordElementActivity, DiscordIntegration } from './discordIntegration.js';
@@ -427,11 +428,15 @@ const defaultVnData = () => {
         // выкидывает из settings любые ключи, которых нет в дефолтном объекте.
         darkenBack: false,
         rowMode: false,
-        // Режим ряда - полоса в стиле Tales of (scripts/rowStage.js). Раскладка - ползунки в панели "Эффекты"
-        // (ROW_LAYOUT_LIMITS): сдвиг по горизонтали (vw), отступ снизу (vh), высота (vh) и ширина (%) полосы,
-        // размер портретов (% высоты полосы), отступ между портретами (vw), затемнение фона (%), прозрачность
-        // фона полосы (%). Все ключи обязательны здесь - иначе слияние в "ready" ниже выбросит их из мира
-        rowLayout: {x: 0, y: 4, bandHeight: 32, bandWidth: 80, scale: 130, gap: 0.5, dim: 55, bgTransparency: 0},
+        // Режим ряда и режим окон - scripts/rowStage.js. Раскладки - ползунки в "Настройках эффектов". Все ключи
+        // обязательны здесь - иначе слияние в "ready" ниже выбросит их из мира.
+        // Режим ряда (ROW_LAYOUT_LIMITS): сдвиг по горизонтали (vw), отступ снизу (vh), масштаб (%), отступ (vw)
+        rowLayout: {x: 0, y: 2, scale: 100, gap: 1.5},
+        // Режим окон - полоса в стиле Tales of (WINDOW_LAYOUT_LIMITS): сдвиг по горизонтали (vw), отступ снизу
+        // (vh), высота (vh) и ширина (%) полосы, отступ между портретами (vw), затемнение фона (%), прозрачность
+        // фона полосы (%). Масштаб, смещение и отражение портретов - у каждого портрета свои (windowSprite)
+        windowMode: false,
+        windowLayout: {x: 0, y: 4, bandHeight: 32, bandWidth: 80, gap: 0.5, dim: 55, bgTransparency: 0},
         // Форма полосы, тема рамки и фон полосы (normalizeTalesStyle, STRIP_SHAPES)
         talesStyle: {shape: "rectangle", theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: ""},
         // Говорящий (позиция слота) и текущая реплика {pos, name, text, stamp}
@@ -577,12 +582,11 @@ Hooks.on("ready", async () => {
         if (typeof mergedSettings.bgScroll === "string") {
             mergedSettings.bgScroll = (mergedSettings.bgScroll === "left" || mergedSettings.bgScroll === "right")
         }
-        // Миграция 2.4 -> 2.5: раскладка ряда без полосы (нет bandHeight) - у "масштаба" и "высоты от низа"
-        // теперь другой смысл (размер портрета относительно полосы, отступ полосы снизу), старые значения
-        // дали бы портреты без выхода за рамку. Такая раскладка заменяется значениями по умолчанию.
-        if (settings.rowLayout && !("bandHeight" in settings.rowLayout)) {
-            mergedSettings.rowLayout = defaultVnData().rowLayout
-        }
+        // Миграция 2.5.x: там "режим ряда" был полосой в стиле Tales of (раскладка с bandHeight). Теперь это
+        // "режим окон", а режим ряда - снова простой ряд 2.4: включённый режим и раскладка полосы переезжают в
+        // windowMode/windowLayout, у режима ряда - значения по умолчанию
+        const legacyWindowState = getLegacyWindowState(settings)
+        if (legacyWindowState) Object.assign(mergedSettings, legacyWindowState, { rowLayout: defaultVnData().rowLayout })
         await game.settings.set(C.ID, "vnData", mergedSettings)
         console.log("VnData updated ✔")
         // Проверяем что есть хотя бы 1 пресет

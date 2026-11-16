@@ -453,11 +453,11 @@
                                 {{#each category.settings as |setting|}}
                                     {{> vsmSettingItem setting=setting}}
                                 {{/each}}
-                                {{#if category.rowControls}}
-                                    {{!-- Полоса режима ряда (apps/rowStyleControls.js) - состояние сцены, свои кнопки сохранения --}}
-                                    <div class="vn-row-controls">
-                                        <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.rowLayoutTitle"}}</h4>
-                                        {{#each @root.rowControls.fields as |field|}}
+                                {{#if category.controls}}
+                                    {{!-- Раскладка режима ряда/окон (apps/rowStyleControls.js) - состояние сцены, свои кнопки сохранения --}}
+                                    <div class="vn-row-controls" data-target="{{category.controls.target}}">
+                                        <h4 class="vn-row-title">{{category.controls.title}}</h4>
+                                        {{#each category.controls.fields as |field|}}
                                             <div class="vn-row-field">
                                                 <span class="vn-row-field-name">{{field.label}}</span>
                                                 <input type="range" data-row-key="{{field.key}}" min="{{field.min}}" max="{{field.max}}" step="{{field.step}}" value="{{field.value}}">
@@ -471,9 +471,10 @@
                                         </div>
                                         <p class="notes">{{localize "visual-novel-reverse.effectsPanel.rowLayoutHint"}}</p>
 
+                                        {{#if category.controls.style}}
                                         <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesShapeTitle"}}</h4>
                                         <div class="vn-row-choices">
-                                            {{#each @root.rowControls.shapes as |shape|}}
+                                            {{#each category.controls.shapes as |shape|}}
                                                 <button type="button" class="vn-row-choice" data-shape="{{shape.id}}">
                                                     <svg class="vn-row-shape-icon{{#if shape.fadeEdges}} vn-row-shape-faded{{/if}}" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polygon points="{{shape.iconPoints}}"/></svg>
                                                     {{shape.label}}
@@ -483,18 +484,19 @@
 
                                         <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesFrameTitle"}}</h4>
                                         <div class="vn-row-choices">
-                                            {{#each @root.rowControls.themes as |theme|}}
+                                            {{#each category.controls.themes as |theme|}}
                                                 <button type="button" class="vn-row-choice" data-theme="{{theme.id}}" style="--vn-swatch: {{theme.color}};"><span class="vn-row-swatch"></span> {{theme.label}}</button>
                                             {{/each}}
-                                            <label class="vn-row-choice vn-row-custom" data-theme="custom"><input type="color" class="vn-row-custom-color" value="{{@root.rowControls.style.customColor}}"> {{localize "visual-novel-reverse.effectsPanel.talesThemeCustom"}}</label>
+                                            <label class="vn-row-choice vn-row-custom" data-theme="custom"><input type="color" class="vn-row-custom-color" value="{{category.controls.style.customColor}}"> {{localize "visual-novel-reverse.effectsPanel.talesThemeCustom"}}</label>
                                         </div>
 
                                         <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesBackgroundTitle"}}</h4>
                                         <div class="vn-row-background">
-                                            <input type="color" class="vn-row-bg-color" value="{{@root.rowControls.style.bgColor}}" data-tooltip="{{localize "visual-novel-reverse.effectsPanel.talesBackgroundColor"}}">
+                                            <input type="color" class="vn-row-bg-color" value="{{category.controls.style.bgColor}}" data-tooltip="{{localize "visual-novel-reverse.effectsPanel.talesBackgroundColor"}}">
                                             <button type="button" class="vn-row-bg-image"><i class="fas fa-image"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundImage"}}</button>
                                             <button type="button" class="vn-row-bg-clear"><i class="fas fa-xmark"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundClear"}}</button>
                                         </div>
+                                        {{/if}}
                                     </div>
                                 {{/if}}
                             </div>

@@ -11,12 +11,13 @@ const vsmDetailsModes = ["moveSliders", "moveButtons", "hideElements"]
 const getDetailModeSliderPos = (data) => ((1 / vsmDetailsModes.length) * vsmDetailsModes.indexOf(data.detailMode) * 100).toFixed(2)
 
 // Категории меню "Настройки эффектов": раскрываются по щелчку, открытые запоминаются до закрытия окна.
-// rowControls - в категории ещё и настройки полосы режима ряда (apps/rowStyleControls.js).
+// layoutTarget - в категории ещё и раскладка режима ряда/окон (apps/rowStyleControls.js, scripts/rowStage.js).
 const EFFECTS_CATEGORIES = [
     { id: "flashes", icon: "fas fa-bolt", keys: ["flashLightSpeed", "flashDarkSpeed"] },
     { id: "background", icon: "fas fa-image", keys: ["bgScrollDirection", "bgScrollLoop", "bgScrollSpeed", "bgBlurStrength"] },
     { id: "narrative", icon: "fas fa-align-center", keys: ["narrativeTextMode", "narrativeTypeSpeed"] },
-    { id: "rowMode", icon: "fas fa-grip-lines", keys: ["talesChatLines"], rowControls: true },
+    { id: "rowMode", icon: "fas fa-grip-lines", keys: [], layoutTarget: "row" },
+    { id: "windowMode", icon: "fas fa-window-maximize", keys: ["talesChatLines"], layoutTarget: "window" },
     { id: "bars", icon: "fas fa-bars-progress", keys: ["barChangeSpeed", "barsAlwaysShow"] },
     { id: "portraits", icon: "fas fa-user", keys: ["autoPortraitFilters", "playerReactions"] },
     { id: "transition", icon: "fas fa-film", keys: ["locationTransition", "locationTransitionSpeed"] },
@@ -45,8 +46,8 @@ export class VisualSettingsMenu extends FormApplication {
     }
 
     async close(options) {
-        this._rowControls?.dispose()
-        this._rowControls = null
+        this._layoutControls?.forEach(controls => controls.dispose())
+        this._layoutControls = []
         return super.close(options)
     }
     
@@ -198,14 +199,15 @@ export class VisualSettingsMenu extends FormApplication {
         const modulesSettingsKeys = ["useSimpleCalendar", "advancedRequestsSync", "discordNotifications", "discordActivitySync", "discordAutoConnect", "discordChannelId", "discordHighlightGM"]
         // Effects settings menu (панель "Эффекты" - apps/effectsPanel.js)
         // - по категориям (EFFECTS_CATEGORIES)
+        const vnDataForControls = _mode == "menuEffects" ? game.settings.get(C.ID, 'vnData') : null
         const settingsCategories = _mode == "menuEffects" ? EFFECTS_CATEGORIES.map(category => ({
             ...category,
+            controls: category.layoutTarget ? getRowControlsData(category.layoutTarget, vnDataForControls) : null,
             name: game.i18n.localize(`${C.ID}.visualSettingsMenu.effectsCategories.${category.id}`),
             open: this._openCategories.has(category.id),
             // Автофильтры по состоянию персонажа есть только в D&D 5e (scripts/portraitFilters.js)
             settings: settingsArray([], category.keys.filter(key => key !== "autoPortraitFilters" || isAutoFiltersSupported())),
         })) : null
-        const rowControls = _mode == "menuEffects" ? getRowControlsData(game.settings.get(C.ID, 'vnData')) : null
 
         const settings =
             _mode=== "menuVisual" ? settingsArray(visualSettingsMenus, visualSettingsKeys) :
@@ -219,16 +221,14 @@ export class VisualSettingsMenu extends FormApplication {
         const barsData = game.settings.get(C.ID, 'vnData').barsData || []
         const bars = (preset?.bars || []).map(bar => ({ ...bar, name: barsData.find(barData => barData.id === bar.id)?.name || "" }))
 
-        return { showMode: _mode, pFields, data, ...preset, bars, presets: presetArray, settings, settingsCategories, rowControls, settingsTab, isMenuTab: true };
+        return { showMode: _mode, pFields, data, ...preset, bars, presets: presetArray, settings, settingsCategories, settingsTab, isMenuTab: true };
     }
 
     activateListeners(html) {
         super.activateListeners(html);
-        // Настройки полосы режима ряда - только в "Настройках эффектов"; старый блок (до перерисовки) отключается
-        this._rowControls?.dispose()
-        this._rowControls = null
-        const rowControlsElement = html[0].querySelector('.vn-row-controls')
-        if (rowControlsElement) this._rowControls = new RowStyleControls(rowControlsElement)
+        // Раскладки режима ряда и режима окон - только в "Настройках эффектов"; старые блоки (до перерисовки) отключаются
+        this._layoutControls?.forEach(controls => controls.dispose())
+        this._layoutControls = Array.from(html[0].querySelectorAll('.vn-row-controls'), element => new RowStyleControls(element))
         html[0].querySelectorAll('.vsm-settings-category').forEach(categoryElement => {
             categoryElement.addEventListener('toggle', () => {
                 if (categoryElement.open) this._openCategories.add(categoryElement.dataset.category)
@@ -315,8 +315,8 @@ export class VisualSettingsMenu extends FormApplication {
 
             // Сохранить настройки
             html[0].querySelector('.vsm-save-button')?.addEventListener('click', async (event) => {
-                // Несохранённые ползунки полосы режима ряда сохраняются вместе с остальными настройками
-                await this._rowControls?.saveDraft()
+                // Несохранённые ползунки раскладок режима ряда и режима окон сохраняются вместе с остальными настройками
+                for (const controls of this._layoutControls || []) await controls.saveDraft()
                 const settingEls = html[0].querySelectorAll('.vsm-setting-container')
                 for (const el of settingEls) {
                     const settingType = el.dataset.type
