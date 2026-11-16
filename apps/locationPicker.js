@@ -2,9 +2,10 @@ import { Constants as C, getEmptyActiveSpeakers, getLocation, getSettings, peekS
 import { VNLocation } from '../scripts/locationClass.js';
 import { VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
+import { getLegacyWindowState } from '../scripts/rowStage.js';
 
 // "Слепок сцены целиком" (настройка sceneSnapshotFull): что кроме фона и портретов сохраняет пресет локации
-const SCENE_SNAPSHOT_KEYS = ["barsData", "darkenBack", "bgScroll", "bgBlur", "rowMode", "rowLayout", "talesStyle", "hideUI", "cleanView", "activeSlots"]
+const SCENE_SNAPSHOT_KEYS = ["barsData", "darkenBack", "bgScroll", "bgBlur", "rowMode", "rowLayout", "windowMode", "windowLayout", "talesStyle", "hideUI", "cleanView", "activeSlots"]
 
 // Без полного слепка пресет хранит только портреты - фильтры (состояние сцены) из них убираются.
 // Автофильтры не сохраняются никогда: ГМ пересчитывает их из состояния актёров (scripts/portraitFilters.js).
@@ -811,13 +812,15 @@ export class LocationPickerSettings extends FormApplication {
             // Пресет, сохранённый полным слепком, восстанавливает и остальное состояние сцены - независимо от
             // текущего значения sceneSnapshotFull (данные в нём уже есть)
             if (preset.scene) {
-                // Слепок из 2.4: раскладка ряда без полосы (нет bandHeight) - у её ползунков был другой смысл,
-                // поэтому она не восстанавливается (остаётся текущая)
-                const isLegacyRowLayout = !!preset.scene.rowLayout && !("bandHeight" in preset.scene.rowLayout)
+                // Слепок из 2.5.x: "режим ряда" с полосой там - это режим окон (scripts/rowStage.js). Его раскладка
+                // переезжает в windowLayout, а раскладка простого ряда остаётся текущей.
+                const legacyWindowState = getLegacyWindowState(preset.scene)
+                const scene = legacyWindowState ? { ...preset.scene, ...legacyWindowState } : preset.scene
                 SCENE_SNAPSHOT_KEYS
-                    .filter(key => key in preset.scene && !(key === "rowLayout" && isLegacyRowLayout))
-                    .forEach(key => { settings[key] = preset.scene[key] })
-                renderParts.push("bars", "foreground", "leftSlider", "rightSlider")
+                    .filter(key => key in scene && !(key === "rowLayout" && legacyWindowState))
+                    .forEach(key => { settings[key] = scene[key] })
+                // editWindow - режим окон переключает окно редактирования на свои настройки спрайтов
+                renderParts.push("bars", "foreground", "leftSlider", "rightSlider", "editWindow")
             }
             await requestSettingsUpdate(settings, {renderData: {renderParts}})
             // UI-пресет - отдельная world-настройка (presetsUI), её может записать только ГМ.

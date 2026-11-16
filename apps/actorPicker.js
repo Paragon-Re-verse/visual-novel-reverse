@@ -615,7 +615,9 @@ async function fullPortraitsCheck(_actors = null) {
                     offsetXl: flag.offsetXl || 0,
                     offsetXr: flag.offsetXr || 0,
                     offsetY: flag.offsetY || 0,
-                    hasActor: true
+                    hasActor: true,
+                    // Спрайт режима окон (scripts/rowStage.js) - иначе пересборка портрета его стирала бы
+                    ...(flag.windowSprite ? { windowSprite: flag.windowSprite } : {}),
                 }
                 if (_oldFlag || !foundry.utils.objectsEqual(flag, newFlag)) {
                     const _temp = await updatePortrait(newFlag.id, newFlag, settings, true)

@@ -9,7 +9,7 @@ import { EffectsPanel } from "../apps/effectsPanel.js";
 import { applyPortraitFilters, buildSpeakerFilterCss } from "./portraitFilters.js";
 import { applyVnDataUpdate } from "./locationTransition.js";
 import { receiveReaction, toggleReactionMenu } from "./reactions.js";
-import { updateRowLayer, showRowLayoutPreview, syncStoredRowLayout } from "./rowStage.js";
+import { updateRowLayer, showLayoutPreview, syncStoredLayouts, normalizeWindowSprite, applyWindowSprite, getWindowActorElement } from "./rowStage.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 export const _portraitPartsKeys = (fullslots = false) => {
@@ -123,8 +123,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
     // Пиздец
     // [тип анимации, флаги vnData, любой из которых прячет часть]. "Чистый вид" (cleanView) прячет шапку,
     // а плашки и имена слайдеров - CSS-классом на #vn-body (портреты внутри слайдеров остаются).
-    // "Режим ряда" прячет шапку и слайдеры целиком (портреты рисует свой слой), но не верхние кнопки.
-    partsClassData = {headerSlider: ["slide", ["hideUI", "cleanView", "rowMode"]], leftSlider: ["slide", ["hideUI", "rowMode"]], rightSlider: ["slide", ["hideUI", "rowMode"]], editWindow: ["fade", ["editMode"]], background: ["fade", ["hideBack"]], foreground: ["fade", ["hideUI"]], bars: ["fade", ["hideUI"]]}
+    // "Режим ряда" и "Режим окон" прячут шапку и слайдеры целиком (портреты рисует свой слой), но не верхние кнопки.
+    partsClassData = {headerSlider: ["slide", ["hideUI", "cleanView", "rowMode", "windowMode"]], leftSlider: ["slide", ["hideUI", "rowMode", "windowMode"]], rightSlider: ["slide", ["hideUI", "rowMode", "windowMode"]], editWindow: ["fade", ["editMode"]], background: ["fade", ["hideBack"]], foreground: ["fade", ["hideUI"]], bars: ["fade", ["hideUI"]]}
     _getPartClass=(part, settingData = getSettings(), uiData = PresetUIClass.getActivePreset()) => {
         const curState = this.partsState[part]
         const partIsActive = uiData.activeElements[part] || ["editWindow", "background", "foreground", "bars"].includes(part)
@@ -279,15 +279,19 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
                 const highlightEl = settingData.editActiveSpeaker
                 const editActor = settingData.activeSpeakers[highlightEl]
                 const leftCheck = highlightEl.includes("left")
+                // В режиме окон масштаб, смещение и отражение - свои у каждого портрета (windowSprite,
+                // scripts/rowStage.js), настройки обычной VN при этом не меняются. Имя и титул - общие.
+                const editWindowMode = !!settingData.windowMode
+                const windowSprite = normalizeWindowSprite(editActor?.windowSprite)
                 const editActorData = {
                     hideName: editActor?.hideName || false,
                     hideTitle: editActor?.hideTitle || false,
                     name: editActor?.name || "",
                     title: editActor?.title || "",
-                    scale: editActor?.scale || 100,
-                    offsetX: (editActor?.[leftCheck ? "offsetXl" : "offsetXr"])*(leftCheck ? -1 : 1) || 0,
-                    offsetY: editActor?.offsetY*-1 || 0,
-                    mirrorX: editActor?.mirrorX || false,
+                    scale: editWindowMode ? windowSprite.scale : (editActor?.scale || 100),
+                    offsetX: editWindowMode ? windowSprite.offsetX : ((editActor?.[leftCheck ? "offsetXl" : "offsetXr"])*(leftCheck ? -1 : 1) || 0),
+                    offsetY: editWindowMode ? windowSprite.offsetY : (editActor?.offsetY*-1 || 0),
+                    mirrorX: editWindowMode ? windowSprite.mirrorX : (editActor?.mirrorX || false),
                     widthEqualFrame: editActor?.widthEqualFrame || false,
                 }
                 const numArray = C.numArray
@@ -300,7 +304,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
                     if (side == "right") acc[side].reverse()
                     return acc
                 }, {"left": [], "right": []/*, "center": []*/})
-                context = { ...context, editActorData, activeSpeakers, 
+                context = { ...context, editActorData, activeSpeakers, editWindowMode,
                     editWindowClass: this._getPartClass(partType, settingData, context._uiData),
                     showEditWindow: allowTo("editWindow"),
                 }
@@ -430,10 +434,19 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         });
         // Поиск элемента редактируемого портрета
         const getActorEl = (pos = peekSetting("editActiveSpeaker")) => document.querySelector(`.vn-portrait.${pos} img`)
+        // Режим окон: ползунки и "Отразить" правят спрайт этого режима (windowSprite) - превью на портрете в полосе
+        const previewWindowSprite = () => applyWindowSprite(getWindowActorElement(peekSetting("editActiveSpeaker")), {
+            scale: html[0].querySelector('#vn-edit-scale')?.value,
+            offsetX: html[0].querySelector('#vn-edit-offsetX')?.value,
+            offsetY: html[0].querySelector('#vn-edit-offsetY')?.value,
+            mirrorX: html[0].querySelector('#vn-edit-mirrorX')?.checked,
+        })
         // - EditWindow: Изменение масштаба
         html.find('input[name="scale"]').off('input.vnScale').on('input.vnScale', function(event) {
             $(this).addClass('vn-hlight');
             html[0].querySelector('.vn-edit-apply').classList.toggle('vn-save-pulse', true);
+            html.find('.range-scale-value').text(`${event.currentTarget.value}%`);
+            if (peekSetting("windowMode")) return previewWindowSprite()
             const actorEl = getActorEl();
             const newVal = event.currentTarget.value
             actorEl.style.transform = actorEl.style.transform.replace(/scale\((-?\d+(?:\.\d+)?)\)/g, `scale(${newVal * 0.01})`);
@@ -444,6 +457,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         html.find('input[name="coordX"]').off('input.vnCoordX').on('input.vnCoordX', function(event) {
             $(this).addClass('vn-hlight');
             html[0].querySelector('.vn-edit-apply').classList.toggle('vn-save-pulse', true);
+            html.find(`.range-coordX-value`).text(event.currentTarget.value);
+            if (peekSetting("windowMode")) return previewWindowSprite()
             const actorEl = getActorEl();
             actorEl.style.left = `${event.currentTarget.value}px`;
             const counterEl = html.find(`.range-coordX-value`);
@@ -453,6 +468,8 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
         html.find('input[name="coordY"]').off('input.vnCoordY').on('input.vnCoordY', function(event) {
             $(this).addClass('vn-hlight');
             html[0].querySelector('.vn-edit-apply').classList.toggle('vn-save-pulse', true);
+            html.find(`.range-coordY-value`).text(event.currentTarget.value);
+            if (peekSetting("windowMode")) return previewWindowSprite()
             const actorEl = getActorEl();
             actorEl.style.top = `${(event.currentTarget.value*-1) - game.settings.get(C.ID, "worldOffsetY")}px`;
             const counterEl = html.find(`.range-coordY-value`);
@@ -464,6 +481,7 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             if (!allowTo("editWindow")) return
             event.target.parentElement.classList.add('vn-hlight');
             html[0].querySelector('.vn-edit-apply').classList.toggle('vn-save-pulse', true);
+            if (peekSetting("windowMode")) return previewWindowSprite()
             const actorBodyEl = document.querySelector(`.vn-portrait.${peekSetting("editActiveSpeaker")} img`)
             if (!actorBodyEl) return
             actorBodyEl.style.transform = actorBodyEl.style.transform.replace(/scaleX\(\s*-?1\s*\)/g, m => m === "scaleX(-1)" ? "scaleX(1)" : "scaleX(-1)")
@@ -1061,13 +1079,24 @@ export class VisualNovelDialogues extends HandlebarsApplicationMixin(Application
             const key = el.dataset.key
             portraitData[`hide${key}`] = el.classList.contains('fa-eye-slash')
         })
-        // Масштаб и смещение
-        portraitData.scale = parseInt(document.getElementById('vn-edit-scale').value);
-        portraitData[leftCheck ? "offsetXl" : "offsetXr"] = parseInt(document.getElementById('vn-edit-offsetX').value)*(leftCheck ? -1 : 1);
-        portraitData.offsetY = parseInt(document.getElementById('vn-edit-offsetY').value)*-1;
-        // Дополнительные настройки
-        portraitData.mirrorX = editWindowEl.querySelector('input[name="mirrorX"]').checked
-        portraitData.widthEqualFrame = editWindowEl.querySelector('input[name="widthEqualFrame"]').checked
+        if (settingData.windowMode) {
+            // Режим окон: масштаб, смещение и отражение - только для этого режима (windowSprite, scripts/rowStage.js),
+            // настройки портрета в обычной VN не трогаются
+            portraitData.windowSprite = normalizeWindowSprite({
+                scale: parseInt(document.getElementById('vn-edit-scale').value),
+                offsetX: parseInt(document.getElementById('vn-edit-offsetX').value),
+                offsetY: parseInt(document.getElementById('vn-edit-offsetY').value),
+                mirrorX: editWindowEl.querySelector('input[name="mirrorX"]').checked,
+            })
+        } else {
+            // Масштаб и смещение
+            portraitData.scale = parseInt(document.getElementById('vn-edit-scale').value);
+            portraitData[leftCheck ? "offsetXl" : "offsetXr"] = parseInt(document.getElementById('vn-edit-offsetX').value)*(leftCheck ? -1 : 1);
+            portraitData.offsetY = parseInt(document.getElementById('vn-edit-offsetY').value)*-1;
+            // Дополнительные настройки
+            portraitData.mirrorX = editWindowEl.querySelector('input[name="mirrorX"]').checked
+            portraitData.widthEqualFrame = editWindowEl.querySelector('input[name="widthEqualFrame"]').checked
+        }
 
         settingData.activeSpeakers[settingData.editActiveSpeaker] = portraitData
         // Подтираем "hideName" и "hideTitle"
@@ -1732,7 +1761,7 @@ function _ensureEffectLayers(body) {
     return { flash, darken, row, narrative }
 }
 
-// Режим ряда (полоса в стиле Tales of) - scripts/rowStage.js
+// Режим ряда и режим окон (полоса в стиле Tales of) - scripts/rowStage.js
 
 // "Чистый вид": шапка (partsClassData) и плашки с именами (класс vn-clean-view на #vn-body) скрыты
 export async function toggleCleanView() {
@@ -1742,8 +1771,8 @@ export async function toggleCleanView() {
 function _applySceneModeClasses(settingData) {
     const body = document.getElementById("vn-body")
     body?.classList.toggle("vn-clean-view", !!settingData.cleanView)
-    // Режим ряда притемняет фон на #vn-fx-darken-layer силой rowLayout.dim (styles/module.css)
-    body?.classList.toggle("vn-row-mode", !!settingData.rowMode)
+    // Режим окон притемняет фон на #vn-fx-darken-layer силой windowLayout.dim (styles/module.css)
+    body?.classList.toggle("vn-window-mode", !!settingData.windowMode)
 }
 
 // Применяет к УЖЕ СУЩЕСТВУЮЩЕМУ #vn-background-image кроп/прокрутку/блюр фона, читая их из текущих
@@ -2166,7 +2195,8 @@ Hooks.once("ready", () => {
         } else if (payload?.type === 'vnReaction' && payload.data) {
             receiveReaction(payload.data)
         } else if (payload?.type === 'vnRowPreview' && payload.data) {
-            showRowLayoutPreview(payload.data.layout)
+            // Без target - превью от 2.5.x, где раскладка была только у полосы (сейчас - режим окон)
+            showLayoutPreview(payload.data.target || "window", payload.data.layout)
         }
     })
 })
@@ -2261,7 +2291,7 @@ Hooks.on("updateSetting", async (setting, value, diff, userId) => {
             // каждое переключение фильтра перезапускало бы их анимацию появления.
             applyPortraitFilters(setting.value)
             // Раскладка ряда и "Чистый вид" - тоже на существующих узлах, без перерисовки
-            syncStoredRowLayout(setting.value)
+            syncStoredLayouts(setting.value)
             updateRowLayer(document.getElementById("vn-fx-row-layer"), setting.value)
             _applySceneModeClasses(setting.value)
             if (diff?.renderData) await VisualNovelDialogues._render(diff.renderData.renderParts, diff.renderData.fullRender)

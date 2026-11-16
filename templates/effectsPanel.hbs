@@ -29,13 +29,16 @@
                 <button type="button" class="vn-fx-toggle-row{{#if rowMode}} vn-fx-active{{/if}}">
                     <i class="fas fa-grip-lines"></i> {{localize "visual-novel-reverse.effectsPanel.rowMode"}}
                 </button>
+                <button type="button" class="vn-fx-toggle-window{{#if windowMode}} vn-fx-active{{/if}}">
+                    <i class="fas fa-window-maximize"></i> {{localize "visual-novel-reverse.effectsPanel.windowMode"}}
+                </button>
                 <button type="button" class="vn-fx-toggle-cleanview{{#if cleanView}} vn-fx-active{{/if}}">
                     <i class="fas fa-expand"></i> {{localize "visual-novel-reverse.effectsPanel.cleanView"}}
                 </button>
             </div>
 
-            {{!-- Режим ряда (полоса Tales of, scripts/rowStage.js) - реплика; раздел виден, пока режим включён --}}
-            <div class="vn-fx-section vn-fx-rowlayout"{{#unless rowMode}} hidden{{/unless}}>
+            {{!-- Режим окон (полоса Tales of, scripts/rowStage.js) - реплика; раздел виден, пока режим включён --}}
+            <div class="vn-fx-section vn-fx-rowlayout"{{#unless windowMode}} hidden{{/unless}}>
                 {{!-- Реплика под рамкой: говорящий - щелчок по портрету в полосе --}}
                 <div class="vn-fx-tales-block">
                     <label class="vn-fx-label">{{localize "visual-novel-reverse.effectsPanel.talesLineTitle"}}</label>

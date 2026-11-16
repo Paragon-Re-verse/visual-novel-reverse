@@ -1,6 +1,6 @@
 import { Constants as C, getSettings, quickSettingsUpdate, peekSetting, requestSettingsUpdate, showRenderedWindow } from '../scripts/const.js';
 import { triggerVNEffect, triggerNarrativeText, toggleCleanView } from '../scripts/main.js';
-import { setRowMode, sayTalesLine, clearTalesLine } from '../scripts/rowStage.js';
+import { setRowMode, setWindowMode, sayTalesLine, clearTalesLine } from '../scripts/rowStage.js';
 import { VisualSettingsMenu } from './visualSettingsMenu.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitFilters.js';
@@ -9,8 +9,10 @@ import { PORTRAIT_FILTERS, normalizePortraitFilters } from '../scripts/portraitF
 // - Тряска спрайта (персонажи отмечаются галочками)
 // - Вспышка света / тьмы (по всему экрану, если никто не отмечен, либо только на отмеченных спрайтах)
 // - Затемнение фона (переключатель, полностью тёмный фон вместо картинки локации)
-// - Режим ряда (переключатель): полоса в стиле Tales of - фон притемняется, активные персонажи стоят
-//   в полосе с рамкой, под ней реплика (scripts/rowStage.js); раскладка - ползунками, рамка и фон полосы
+// - Режим ряда (переключатель): фон затемняется, активные персонажи стоят в ряд (scripts/rowStage.js)
+// - Режим окон (переключатель): полоса в стиле Tales of - фон притемняется, активные персонажи стоят
+//   в полосе с рамкой, под ней реплика (scripts/rowStage.js). Раскладки обоих режимов, рамка и фон полосы -
+//   "Настройки эффектов"; спрайты портретов в режиме окон - окно редактирования VN
 // - Чистый вид (переключатель: шапка, плашки и имена скрыты, верхние круглые кнопки остаются)
 // - Медленная прокрутка фона (переключатель вкл/выкл; направление и зацикленность анимации
 //   настраиваются отдельно ГМом в "Настройки эффектов" - scripts/settings.js, bgScrollDirection/bgScrollLoop)
@@ -149,6 +151,7 @@ export class EffectsPanel extends FormApplication {
     static TOGGLE_SETTINGS = {
         '.vn-fx-toggle-darken': 'darkenBack',
         '.vn-fx-toggle-row': 'rowMode',
+        '.vn-fx-toggle-window': 'windowMode',
         '.vn-fx-toggle-cleanview': 'cleanView',
         '.vn-fx-bgscroll-toggle': 'bgScroll',
         '.vn-fx-blur-toggle': 'bgBlur',
@@ -205,9 +208,9 @@ export class EffectsPanel extends FormApplication {
     _syncRowLayout(html) {
         const sectionElement = html[0].querySelector('.vn-fx-rowlayout')
         if (!sectionElement) return
-        const isRowMode = !!peekSetting("rowMode")
-        if (sectionElement.hidden === isRowMode) {
-            sectionElement.hidden = !isRowMode
+        const isWindowMode = !!peekSetting("windowMode")
+        if (sectionElement.hidden === isWindowMode) {
+            sectionElement.hidden = !isWindowMode
             this._fitHeight()
         }
         // Говорящего меняют и щелчки по портретам в окне VN, и реплики из чата
@@ -294,6 +297,7 @@ export class EffectsPanel extends FormApplication {
         return {
             darkenBack: !!settingData.darkenBack,
             rowMode: !!settingData.rowMode,
+            windowMode: !!settingData.windowMode,
             cleanView: !!settingData.cleanView,
             bgScroll: !!settingData.bgScroll,
             bgBlur: !!settingData.bgBlur,
@@ -400,15 +404,16 @@ export class EffectsPanel extends FormApplication {
             await quickSettingsUpdate({ darkenBack: next }, { renderData: { renderParts: ["foreground"] } })
         })
 
-        // --- Режим ряда (переключатель): полоса в стиле Tales of (scripts/rowStage.js) ---
-        // Прячет шапку и слайдеры и притемняет фон; верхние круглые кнопки остаются.
-        // (Если нужно "затемнение само по себе" без режима ряда - для этого отдельная кнопка выше.)
+        // --- Режим ряда и режим окон (переключатели, включён максимум один - scripts/rowStage.js) ---
+        // Оба прячут шапку и слайдеры; верхние круглые кнопки остаются. Режим ряда затемняет фон полностью
+        // ("Затемнение фона"), режим окон - своей настройкой. Кнопки сверяются с данными в _syncLiveState.
         html.find('.vn-fx-toggle-row').on('click', async (event) => {
             event.preventDefault()
-            const turningOn = !peekSetting("rowMode")
-            event.currentTarget.classList.toggle('vn-fx-active', turningOn)
-            if (!turningOn) html[0].querySelector('.vn-fx-toggle-darken')?.classList.remove('vn-fx-active')
-            await setRowMode(turningOn)
+            await setRowMode(!peekSetting("rowMode"))
+        })
+        html.find('.vn-fx-toggle-window').on('click', async (event) => {
+            event.preventDefault()
+            await setWindowMode(!peekSetting("windowMode"))
         })
 
         // --- Реплика под рамкой: "Сказать" (или Ctrl+Enter) и "Убрать реплику" ---
@@ -430,7 +435,7 @@ export class EffectsPanel extends FormApplication {
 
         // --- Раскладка, форма, рамка и фон полосы - "Настройки эффектов", категория "Режим ряда" ---
         html[0].querySelector('.vn-fx-tales-open-settings')?.addEventListener('click', () => {
-            VisualSettingsMenu.openEffectsCategory("rowMode")
+            VisualSettingsMenu.openEffectsCategory("windowMode")
         })
 
         // --- Чистый вид (шапка, плашки и имена скрыты, верхние кнопки остаются) ---

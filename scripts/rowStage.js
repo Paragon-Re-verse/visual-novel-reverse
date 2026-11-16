@@ -1,36 +1,73 @@
-// Режим ряда в стиле Tales of: фон притемняется, выезжает горизонтальная полоса с рамкой, в ней стоят
-// активные персонажи. Снизу портреты обрезаются по внутренней границе рамки, сверху свободно выходят за неё.
-// Под рамкой - тёмная плашка с именем говорящего и репликой, которая печатается по буквам.
+// Два режима показа активных персонажей поверх сцены (один слой #vn-fx-row-layer, включён максимум один):
 //
-// Состояние сцены (vnData, общее для всех):
-// - rowMode - режим включён (переключатель в панели "Эффекты");
-// - rowLayout - положение и размеры (ползунки, ROW_LAYOUT_LIMITS). Пока ГМ двигает ползунки, несохранённый
-//   вариант рассылается по сокету (vnRowPreview) и показывается у всех; "Сохранить" пишет rowLayout;
+// "Режим ряда" (rowMode) - как в 2.4: фон затемняется, персонажи стоят в ряд у нижнего края. Раскладка -
+// rowLayout (ROW_LAYOUT_LIMITS): положение, масштаб, отступ.
+//
+// "Режим окон" (windowMode, в стиле Tales of) - фон притемняется, выезжает горизонтальная полоса с рамкой,
+// в ней стоят персонажи. Снизу портреты обрезаются по внутренней границе рамки, сверху свободно выходят за
+// неё. Под рамкой - плашка с именем говорящего и репликой, которая печатается по буквам.
+// - windowLayout - положение и размеры полосы (WINDOW_LAYOUT_LIMITS);
 // - talesStyle - форма полосы, тема рамки и фон полосы (normalizeTalesStyle);
 // - talesSpeaker - позиция говорящего (ГМ щёлкает по портрету в полосе), остальные слегка притемнены;
-// - talesLine - текущая реплика {pos, name, text, stamp}: из поля в панели "Эффекты" или из чата
-//   (сообщение от лица персонажа в полосе, настройка talesChatLines).
-// Портреты в полосе - <img data-pos>, как и раньше в режиме ряда: тряска, вспышки (main.js), фильтры
-// (scripts/portraitFilters.js) и облака реакций (scripts/reactions.js) находят их по этому селектору.
+// - talesLine - текущая реплика {pos, name, text, stamp}: из поля в панели "Эффекты" или из чата;
+// - у каждого портрета своя настройка спрайта для этого режима - windowSprite {scale, offsetX, offsetY,
+//   mirrorX} (окно редактирования в режиме окон правит её, а не настройки обычной VN).
+//
+// Обе раскладки правятся ползунками в "Настройках эффектов": пока ГМ двигает ползунки, несохранённый
+// вариант рассылается по сокету (vnRowPreview) и показывается у всех; "Сохранить" пишет его в vnData.
+// Портреты в обоих режимах - <img data-pos>: тряска, вспышки (main.js), фильтры (scripts/portraitFilters.js)
+// и облака реакций (scripts/reactions.js) находят их по этому селектору.
 import { Constants as C, allowTo, peekSetting, quickSettingsUpdate } from './const.js';
 
 export const ROW_LAYOUT_LIMITS = {
     x: { min: -50, max: 50, step: 1, default: 0 },
+    y: { min: 0, max: 60, step: 1, default: 2 },
+    scale: { min: 30, max: 200, step: 5, default: 100 },
+    gap: { min: -10, max: 10, step: 0.5, default: 1.5 },
+}
+
+export const WINDOW_LAYOUT_LIMITS = {
+    x: { min: -50, max: 50, step: 1, default: 0 },
     y: { min: 0, max: 50, step: 1, default: 4 },
     bandHeight: { min: 15, max: 60, step: 1, default: 32 },
     bandWidth: { min: 40, max: 100, step: 1, default: 80 },
-    scale: { min: 60, max: 250, step: 5, default: 130 },
     gap: { min: -10, max: 10, step: 0.5, default: 0.5 },
     dim: { min: 0, max: 100, step: 5, default: 55 },
     // Прозрачность внутреннего фона полосы (цвета или картинки): 0 - непрозрачный, 100 - фона не видно
     bgTransparency: { min: 0, max: 100, step: 5, default: 0 },
 }
 
-export function normalizeRowLayout(layout) {
-    return Object.fromEntries(Object.entries(ROW_LAYOUT_LIMITS).map(([key, limit]) => {
+// Раскладки двух режимов: ключ в vnData и пределы ползунков
+export const LAYOUTS = {
+    row: { key: "rowLayout", limits: ROW_LAYOUT_LIMITS },
+    window: { key: "windowLayout", limits: WINDOW_LAYOUT_LIMITS },
+}
+
+export function normalizeLayout(target, layout) {
+    return Object.fromEntries(Object.entries(LAYOUTS[target].limits).map(([key, limit]) => {
         const value = Number(layout?.[key])
         return [key, Number.isFinite(value) ? Math.min(limit.max, Math.max(limit.min, value)) : limit.default]
     }))
+}
+
+// Данные 2.5.x: там "режим ряда" был полосой (раскладка с bandHeight) - теперь это режим окон.
+// Возвращает {windowMode, rowMode: false, windowLayout} для такого состояния сцены или слепка, иначе null.
+export function getLegacyWindowState(scene) {
+    if (!scene?.rowLayout || typeof scene.rowLayout !== "object" || !("bandHeight" in scene.rowLayout)) return null
+    return { windowMode: !!scene.rowMode, rowMode: false, windowLayout: normalizeLayout("window", scene.rowLayout) }
+}
+
+// Спрайт портрета в режиме окон: высота - 130% внутренней высоты полосы, умноженные на scale;
+// смещение в px (offsetY - вверх), отражение по горизонтали
+export const WINDOW_SPRITE_LIMITS = { scale: { min: 0, max: 200, default: 100 } }
+export function normalizeWindowSprite(sprite) {
+    const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback
+    return {
+        scale: Math.min(WINDOW_SPRITE_LIMITS.scale.max, Math.max(WINDOW_SPRITE_LIMITS.scale.min, number(sprite?.scale, 100))),
+        offsetX: number(sprite?.offsetX, 0),
+        offsetY: number(sprite?.offsetY, 0),
+        mirrorX: !!sprite?.mirrorX,
+    }
 }
 
 // Готовые темы рамки - основной цвет; светлая кромка и цвет имени получаются из него (color-mix в CSS)
@@ -62,51 +99,76 @@ export function normalizeTalesStyle(style) {
 
 export const getFrameColor = (style) => style.theme === "custom" ? style.customColor : FRAME_THEMES[style.theme]
 
-// ===== Раскладка: сохранённая и превью =====
-let rowLayoutPreview = null
-let storedRowLayoutKey = null
+// ===== Раскладки: сохранённые и превью =====
+const layoutPreviews = { row: null, window: null }
+const storedLayoutKeys = { row: null, window: null }
 
-function applyLayoutVars(rowElement, layout) {
-    if (!rowElement) return
-    const { x, y, bandHeight, bandWidth, scale, gap, dim, bgTransparency } = normalizeRowLayout(layout)
+function applyRowLayoutVars(rowElement, layout) {
+    const { x, y, scale, gap } = normalizeLayout("row", layout)
     rowElement.style.setProperty("--vn-row-x", x)
     rowElement.style.setProperty("--vn-row-y", y)
-    rowElement.style.setProperty("--vn-row-band-h", bandHeight)
-    rowElement.style.setProperty("--vn-row-band-w", bandWidth)
     rowElement.style.setProperty("--vn-row-scale", scale / 100)
     rowElement.style.setProperty("--vn-row-gap", gap)
-    rowElement.style.setProperty("--vn-row-bg-opacity", 1 - bgTransparency / 100)
-    // Затемнение - на слое затемнения фона (#vn-fx-darken-layer, styles/module.css #vn-body.vn-row-mode)
-    document.getElementById("vn-body")?.style.setProperty("--vn-row-dim", dim / 100)
+}
+
+function applyWindowLayoutVars(rowElement, layout) {
+    const { x, y, bandHeight, bandWidth, gap, dim, bgTransparency } = normalizeLayout("window", layout)
+    rowElement.style.setProperty("--vn-win-x", x)
+    rowElement.style.setProperty("--vn-win-y", y)
+    rowElement.style.setProperty("--vn-win-band-h", bandHeight)
+    rowElement.style.setProperty("--vn-win-band-w", bandWidth)
+    rowElement.style.setProperty("--vn-win-gap", gap)
+    rowElement.style.setProperty("--vn-win-bg-opacity", 1 - bgTransparency / 100)
+    // Затемнение - на слое затемнения фона (#vn-fx-darken-layer, styles/module.css #vn-body.vn-window-mode)
+    document.getElementById("vn-body")?.style.setProperty("--vn-win-dim", dim / 100)
+}
+
+function applyLayoutVars(rowElement, settingData) {
+    if (!rowElement) return
+    applyRowLayoutVars(rowElement, layoutPreviews.row || settingData.rowLayout)
+    applyWindowLayoutVars(rowElement, layoutPreviews.window || settingData.windowLayout)
 }
 
 // Показ превью, пришедшего по сокету (или своего); null - вернуться к сохранённой раскладке
-export function showRowLayoutPreview(layout) {
-    rowLayoutPreview = layout ? normalizeRowLayout(layout) : null
-    applyLayoutVars(document.getElementById("vn-fx-row-layer"), rowLayoutPreview || peekSetting("rowLayout"))
+export function showLayoutPreview(target, layout) {
+    if (!LAYOUTS[target]) return
+    layoutPreviews[target] = layout ? normalizeLayout(target, layout) : null
+    const rowElement = document.getElementById("vn-fx-row-layer")
+    if (rowElement) applyLayoutVars(rowElement, { rowLayout: peekSetting("rowLayout"), windowLayout: peekSetting("windowLayout") })
 }
 
 // layout - несохранённая раскладка, null - вернуться к сохранённой. Без записи в настройки мира.
-export function previewRowLayout(layout) {
-    showRowLayoutPreview(layout)
-    game.socket.emit(`module.${C.ID}`, { type: 'vnRowPreview', data: { layout: rowLayoutPreview } })
+export function previewLayout(target, layout) {
+    showLayoutPreview(target, layout)
+    game.socket.emit(`module.${C.ID}`, { type: 'vnRowPreview', data: { target, layout: layoutPreviews[target] } })
 }
 
-// Любое изменение сохранённой раскладки (сохранение, выбор пресета локации) снимает превью у всех
-export function syncStoredRowLayout(settingData) {
-    const storedKey = JSON.stringify(normalizeRowLayout(settingData.rowLayout))
-    if (storedRowLayoutKey !== null && storedKey !== storedRowLayoutKey) rowLayoutPreview = null
-    storedRowLayoutKey = storedKey
+// Любое изменение сохранённой раскладки (сохранение, выбор пресета локации) снимает её превью у всех
+export function syncStoredLayouts(settingData) {
+    for (const [target, { key }] of Object.entries(LAYOUTS)) {
+        const storedKey = JSON.stringify(normalizeLayout(target, settingData[key]))
+        if (storedLayoutKeys[target] !== null && storedKey !== storedLayoutKeys[target]) layoutPreviews[target] = null
+        storedLayoutKeys[target] = storedKey
+    }
 }
 
 // ===== Состояние сцены =====
-// Режим ряда прячет шапку и слайдеры (main.js partsClassData), верхние круглые кнопки остаются - выйти из
-// режима можно и с закрытой панелью "Эффекты". Фон притемняется настройкой dim, а не "Затемнением фона";
-// при выключении "Затемнение фона" тоже снимается - в 2.4 режим ряда включал его вместе с собой.
+// Оба режима прячут шапку и слайдеры (main.js partsClassData), верхние круглые кнопки остаются - выйти из
+// режима можно и с закрытой панелью "Эффекты". Включённым может быть только один режим.
+// Режим ряда (как в 2.4) затемняет фон полностью ("Затемнение фона") и снимает его при выключении.
 export async function setRowMode(isEnabled) {
     await quickSettingsUpdate(
-        isEnabled ? { rowMode: true } : { rowMode: false, darkenBack: false },
-        { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider"] } }
+        isEnabled ? { rowMode: true, windowMode: false, darkenBack: true } : { rowMode: false, darkenBack: false },
+        // editWindow - окно редактирования переключается между настройками спрайтов обычной VN и режима окон
+        { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider", "editWindow"] } }
+    )
+}
+
+// Режим окон притемняет фон своей настройкой dim; полное "Затемнение фона" режима ряда при переходе снимается
+export async function setWindowMode(isEnabled) {
+    await quickSettingsUpdate(
+        isEnabled ? { windowMode: true, rowMode: false, darkenBack: false } : { windowMode: false },
+        { renderData: { renderParts: ["headerSlider", "leftSlider", "rightSlider", "editWindow"] } }
     )
 }
 
@@ -140,6 +202,25 @@ const getActiveEntries = (settingData) => ["left", "right"].flatMap(side =>
         .filter(entry => entry.speaker)
 )
 
+const getImagesKey = (images) => Array.from(images).map(img => `${img.dataset.pos}:${img.dataset.src}`).join("|")
+const getEntriesKey = (entries) => entries.map(entry => `${entry.pos}:${entry.speaker.img}`).join("|")
+
+function createImage(entry) {
+    const img = document.createElement("img")
+    img.src = entry.speaker.img
+    img.dataset.src = entry.speaker.img
+    // data-pos - чтобы applyPortraitFilters (scripts/portraitFilters.js) мог наложить фильтры слота
+    img.dataset.pos = entry.pos
+    return img
+}
+
+// Режим ряда (2.4): картинки - прямые дети слоя
+function updatePlainRow(rowElement, entries) {
+    if (rowElement.querySelector(":scope > .vn-tales-stage")) rowElement.replaceChildren()
+    if (getImagesKey(rowElement.querySelectorAll(":scope > img")) === getEntriesKey(entries)) return
+    rowElement.replaceChildren(...entries.map(createImage))
+}
+
 function ensureStage(rowElement) {
     let stageElement = rowElement.querySelector(":scope > .vn-tales-stage")
     if (stageElement) return stageElement
@@ -165,22 +246,28 @@ function ensureStage(rowElement) {
 }
 
 function syncActors(actorsElement, entries) {
-    const existingKey = Array.from(actorsElement.querySelectorAll("img")).map(img => `${img.dataset.pos}:${img.dataset.src}`).join("|")
-    const wantedKey = entries.map(entry => `${entry.pos}:${entry.speaker.img}`).join("|")
-    if (existingKey === wantedKey) return
+    if (getImagesKey(actorsElement.querySelectorAll("img")) === getEntriesKey(entries)) return
     actorsElement.replaceChildren(...entries.map(entry => {
         const actorElement = document.createElement("div")
         actorElement.className = "vn-tales-actor"
         actorElement.dataset.pos = entry.pos
-        const img = document.createElement("img")
-        img.src = entry.speaker.img
-        img.dataset.src = entry.speaker.img
-        // data-pos - чтобы applyPortraitFilters (scripts/portraitFilters.js) мог наложить фильтры слота
-        img.dataset.pos = entry.pos
-        actorElement.appendChild(img)
+        actorElement.appendChild(createImage(entry))
         return actorElement
     }))
 }
+
+// Спрайт режима окон - на обёртке .vn-tales-actor (а не на <img>): тряска и вспышка анимируют transform
+// и filter самой картинки и иначе стирали бы смещение и отражение на время анимации
+export function applyWindowSprite(actorElement, sprite) {
+    if (!actorElement) return
+    const { scale, offsetX, offsetY, mirrorX } = normalizeWindowSprite(sprite)
+    actorElement.style.height = `${1.3 * scale}%`
+    actorElement.style.transform = `translate(${offsetX}px, ${-offsetY}px)${mirrorX ? " scaleX(-1)" : ""}`
+}
+
+// Узел портрета в полосе - для живого превью из окна редактирования (main.js)
+export const getWindowActorElement = (position) =>
+    document.querySelector(`#vn-fx-row-layer .vn-tales-actor[data-pos="${CSS.escape(position || "")}"]`)
 
 function applyStyle(rowElement, stageElement, style) {
     rowElement.style.setProperty("--vn-tales-frame", getFrameColor(style))
@@ -224,31 +311,40 @@ function showLine(dialogueElement, line) {
     tick()
 }
 
-// Вызывается из main.js на каждом рендере окна VN и на каждом обновлении vnData
-export function updateRowLayer(rowElement, settingData) {
-    if (!rowElement) return
-    const isActive = !!settingData.rowMode
-    rowElement.classList.toggle("vn-fx-active", isActive)
-    applyLayoutVars(rowElement, rowLayoutPreview || settingData.rowLayout)
-    if (!isActive) {
-        if (rowElement.childElementCount) rowElement.replaceChildren()
-        return
-    }
+function updateWindowStage(rowElement, settingData, entries) {
     const stageElement = ensureStage(rowElement)
-    const entries = getActiveEntries(settingData)
     const actorsElement = stageElement.querySelector(".vn-tales-actors")
     syncActors(actorsElement, entries)
     const speakerPosition = entries.some(entry => entry.pos === settingData.talesSpeaker) ? settingData.talesSpeaker : null
     actorsElement.classList.toggle("vn-tales-has-speaker", !!speakerPosition)
     actorsElement.querySelectorAll(".vn-tales-actor").forEach(actorElement => {
         actorElement.classList.toggle("vn-tales-speaking", actorElement.dataset.pos === speakerPosition)
+        applyWindowSprite(actorElement, settingData.activeSpeakers?.[actorElement.dataset.pos]?.windowSprite)
     })
     rowElement.classList.toggle("vn-tales-clickable", allowTo("editWindow"))
     applyStyle(rowElement, stageElement, normalizeTalesStyle(settingData.talesStyle))
     showLine(stageElement.querySelector(".vn-tales-dialogue"), settingData.talesLine)
 }
 
-// ===== Реплики из чата =====
+// Вызывается из main.js на каждом рендере окна VN и на каждом обновлении vnData
+export function updateRowLayer(rowElement, settingData) {
+    if (!rowElement) return
+    const isWindowMode = !!settingData.windowMode
+    const isRowMode = !isWindowMode && !!settingData.rowMode
+    rowElement.classList.toggle("vn-fx-active", isWindowMode || isRowMode)
+    rowElement.classList.toggle("vn-row-window", isWindowMode)
+    rowElement.classList.toggle("vn-row-plain", isRowMode)
+    applyLayoutVars(rowElement, settingData)
+    if (!isWindowMode && !isRowMode) {
+        if (rowElement.childElementCount) rowElement.replaceChildren()
+        return
+    }
+    const entries = getActiveEntries(settingData)
+    if (isWindowMode) updateWindowStage(rowElement, settingData, entries)
+    else updatePlainRow(rowElement, entries)
+}
+
+// ===== Реплики из чата (режим окон) =====
 // Сообщение от лица персонажа, который стоит в полосе, становится репликой. Пишет только активный ГМ
 // (у остальных клиентов то же событие игнорируется), шёпот и броски пропускаются.
 function getChatLineText(content) {
@@ -258,7 +354,7 @@ function getChatLineText(content) {
 
 Hooks.on("createChatMessage", (message) => {
     if (!game.users.activeGM?.isSelf) return
-    if (!game.settings.get(C.ID, "talesChatLines") || !peekSetting("rowMode")) return
+    if (!game.settings.get(C.ID, "talesChatLines") || !peekSetting("windowMode")) return
     const chatStyles = CONST.CHAT_MESSAGE_STYLES || {}
     if (message.isRoll || message.whisper?.length || ![chatStyles.IC, chatStyles.EMOTE].includes(message.style)) return
     const actorId = message.speaker?.actor
