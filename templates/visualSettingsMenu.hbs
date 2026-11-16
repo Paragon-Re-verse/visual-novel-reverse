@@ -417,8 +417,9 @@
                             {{else if (eq setting.type "string")}}
                                 {{#if setting.choices}}
                                     <div class="vsm-choice-group">
+                                        {{!-- ../ - внутри each контекст - вариант, а setting лежит в контексте partial --}}
                                         {{#each setting.choices as |item|}}
-                                            <button type="button" class="vsm-choice-button{{#if (eq item.key setting.value)}} vsm-choice-active{{/if}}" data-value="{{item.key}}">{{item.value}}</button>
+                                            <button type="button" class="vsm-choice-button{{#if (eq item.key ../setting.value)}} vsm-choice-active{{/if}}" data-value="{{item.key}}">{{item.value}}</button>
                                         {{/each}}
                                     </div>
                                 {{else if setting.filePicker}}
