@@ -383,3 +383,23 @@ export const getDefaultPortraitSettingsForType = (portraitAutoCreationRule = "ma
     searchConditions: [{ ...defaultPortraitSettingsTemplate }],
     generalRules: { ...generalRulesTemplate, portraitAutoCreationRule },
 })
+
+// Типы актёров, которые в своей системе играют роль персонажа или NPC - им, как "character"/"npc", по
+// умолчанию включается автосоздание портрета при открытии листа. Остальным новым типам - "Только вручную".
+// GURPS 4e Game Aid: "enemy" - NPC. PbtA (в т.ч. Masks: A New Generation): "character"/"npc" уже как в dnd5e.
+const SYSTEM_PORTRAIT_TYPES = {
+    gurps: ["enemy"],
+}
+export const getDefaultAutoCreationRuleForType = (type) =>
+    ["character", "npc", ...(SYSTEM_PORTRAIT_TYPES[game.system.id] || [])].includes(type) ? "openSheet" : "manuallyOnly"
+
+// Название типа актёра: перевод системы (TYPES.Actor.<тип>) -> перевод модуля для типов, которые системы
+// оставляют без перевода (GURPS: character/enemy) -> сам тип с заглавной буквы
+export function getActorTypeLabel(type) {
+    const systemLabel = game.i18n.translations.TYPES?.Actor?.[type]
+    if (systemLabel) return systemLabel
+    const moduleKey = `${Constants.ID}.actorTypes.${type}`
+    if (game.i18n.has(moduleKey)) return game.i18n.localize(moduleKey)
+    const shortType = type.split(".").pop()
+    return shortType.charAt(0).toUpperCase() + shortType.slice(1)
+}

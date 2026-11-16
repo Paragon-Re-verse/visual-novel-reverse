@@ -1,7 +1,12 @@
 // Автофильтры (настройка autoPortraitFilters, меню "Настройки эффектов"): activeSpeakers[pos].autoFilters -
 // вычисляются ГМом из состояния актёра (HP, статусы) и хранятся отдельно от ручных filters, поэтому
 // "Снять фильтры" в панели их не трогает, а выключение настройки сразу убирает их у всех клиентов.
+// Работают только в D&D 5e: HP и статусы читаются в её формате. В других системах (GURPS, PbtA/Masks и т.д.)
+// настройка скрыта из меню, а автофильтры не считаются и не рисуются.
 import { Constants as C, getSettings } from './const.js';
+
+export const isAutoFiltersSupported = () => game.system.id === "dnd5e"
+const isAutoFiltersEnabled = () => isAutoFiltersSupported() && game.settings.get(C.ID, "autoPortraitFilters")
 
 // Фильтры-эффекты на портретах VN-окна (кровь, грязь, затемнение и т.д.).
 //
@@ -42,7 +47,7 @@ export function normalizePortraitFilters(filters) {
 // Ручные фильтры + автофильтры (если включены) - то, что реально рисуется на портрете
 export function getEffectiveFilters(speaker) {
     if (!speaker) return []
-    const autoFilters = game.settings.get(C.ID, "autoPortraitFilters") ? speaker.autoFilters : []
+    const autoFilters = isAutoFiltersEnabled() ? speaker.autoFilters : []
     return normalizePortraitFilters([...(speaker.filters || []), ...(autoFilters || [])])
 }
 
@@ -178,8 +183,7 @@ export function applyPortraitFilters(settingData) {
 }
 
 // ===== Автофильтры по состоянию персонажа =====
-// Статусы - id из CONFIG.statusEffects (dnd5e). HP - system.attributes.hp (dnd5e); в системах без этого
-// пути (PbtA и т.п.) работают только статусы.
+// Только D&D 5e (isAutoFiltersSupported): статусы - id из её CONFIG.statusEffects, HP - system.attributes.hp.
 function computeAutoFilters(actor) {
     const statuses = actor.statuses ?? new Set()
     const hasStatus = (...ids) => ids.some(id => statuses.has(id))
@@ -207,7 +211,8 @@ function resolveActor(actorId) {
 // повторно, но второй проход уже ничего не меняет.
 async function syncAutoFilters() {
     if (!game.users.activeGM?.isSelf) return
-    const isEnabled = game.settings.get(C.ID, "autoPortraitFilters")
+    // Вне D&D 5e - всегда пусто: оставшиеся в сцене автофильтры (мир сменил систему) снимаются
+    const isEnabled = isAutoFiltersEnabled()
     const settings = getSettings()
     let hasChanges = false
     for (const speaker of Object.values(settings.activeSpeakers || {})) {

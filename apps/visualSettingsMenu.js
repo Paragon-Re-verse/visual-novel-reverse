@@ -1,9 +1,10 @@
-import { Constants as C, defaultPortraitSettingsTemplate, quickSettingsUpdate, uiButtonsIcons, getSettings } from '../scripts/const.js';
+import { Constants as C, defaultPortraitSettingsTemplate, quickSettingsUpdate, uiButtonsIcons, getSettings, getActorTypeLabel } from '../scripts/const.js';
 import { _portraitPartsKeys, VisualNovelDialogues } from '../scripts/main.js';
 import { PresetUIClass } from '../scripts/presetUIClass.js';
 import { openMassPortraitCreator } from './actorPicker.js';
 import { ButtonsCustomizer } from './buttonsCustomizer.js';
 import { getRowControlsData, RowStyleControls } from './rowStyleControls.js';
+import { isAutoFiltersSupported } from '../scripts/portraitFilters.js';
 
 // Под-режимы детального режима.
 const vsmDetailsModes = ["moveSliders", "moveButtons", "hideElements"]
@@ -76,10 +77,8 @@ export class VisualSettingsMenu extends FormApplication {
         const hiddenTypes = game.settings.get(C.ID, "hiddenTypes")
         const settingsTab = Actor.TYPES.filter(type => ![...hiddenTypes, "base"].includes(type)).map(t => { return {
             name: t,
-            // Если у стороннего модуля, зарегистрировавшего этот подтип, нет собственной
-            // локализации TYPES.Actor.<module-id>.<subtype> - localize() вернёт сырой ключ как есть.
-            // Показываем вместо него хотя бы последний сегмент подтипа, а не полный дотнотированный ключ.
-            label: game.i18n.translations.TYPES?.Actor?.[t] || t.split(".").pop(),
+            // Перевод системы, иначе перевод модуля (GURPS не переводит свои типы), иначе сам тип (const.js)
+            label: getActorTypeLabel(t),
             autoSearchData: autoPortraitSettings[t]
         }});
 
@@ -203,7 +202,8 @@ export class VisualSettingsMenu extends FormApplication {
             ...category,
             name: game.i18n.localize(`${C.ID}.visualSettingsMenu.effectsCategories.${category.id}`),
             open: this._openCategories.has(category.id),
-            settings: settingsArray([], category.keys),
+            // Автофильтры по состоянию персонажа есть только в D&D 5e (scripts/portraitFilters.js)
+            settings: settingsArray([], category.keys.filter(key => key !== "autoPortraitFilters" || isAutoFiltersSupported())),
         })) : null
         const rowControls = _mode == "menuEffects" ? getRowControlsData(game.settings.get(C.ID, 'vnData')) : null
 
@@ -750,18 +750,20 @@ export class VisualSettingsMenu extends FormApplication {
             // Менюшка сокрытие типов персонажей
             html.find('.vsm-hiddenTypes-button').on('click', () => {
                 const actorTypes = Actor.TYPES.filter(type => type != "base")
-                const translates = game.i18n.translations.TYPES.Actor
+                // В системе может не быть раздела TYPES в переводах вовсе (GURPS) - без "?." меню не открывалось
+                const translates = game.i18n.translations.TYPES?.Actor
+                const hasUntranslatedTypes = actorTypes.some(type => !translates?.[type] && !game.i18n.has(`${C.ID}.actorTypes.${type}`))
                 const hiddenTypes = game.settings.get(C.ID, "hiddenTypes")
                 const content = `
                 <div class="form-group">
                     <p>${game.i18n.localize(`${C.ID}.visualSettingsMenu.hiddenTypesHint`)}</p>
-                    ${translates ? "" : `<p>${game.i18n.localize(`${C.ID}.visualSettingsMenu.noTypesTranslation`)}</p>`}
+                    ${hasUntranslatedTypes ? `<p>${game.i18n.localize(`${C.ID}.visualSettingsMenu.noTypesTranslation`)}</p>` : ""}
                         ${actorTypes.map(type => {
                             return `
                                 <div class="form-fields">
                                     <label>
                                         <input id="hiddenTypes-${type}" type="checkbox" name="${type}" ${hiddenTypes.includes(type) ? "checked" : ""}>
-                                        <span for="hiddenTypes-${type}">${translates?.[type] || type.split(".").pop()}</span>
+                                        <span for="hiddenTypes-${type}">${getActorTypeLabel(type)}</span>
                                     </label>
                                 </div>
                             `
