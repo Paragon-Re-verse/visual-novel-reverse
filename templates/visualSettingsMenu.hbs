@@ -394,6 +394,47 @@
             {{/each}}
         </div>
     {{else}}
+        {{!-- Одна настройка - общая разметка для обычных списков и категорий "Настроек эффектов" --}}
+        {{#*inline "vsmSettingItem"}}
+                <div class="form-group vsm-setting-container"data-type="{{setting.type}}" data-key="{{setting.key}}">
+                    <label for="sm-{{setting.key}}" >{{setting.name}}</label>
+                    {{#if setting.button}}
+                        <button type="button" class="vsm-setting-menu-button" data-key="{{setting.key}}">
+                            <i class="{{setting.icon}}"></i>
+                            <label>{{setting.label}}</label>
+                        </button>
+                    {{else}}
+                        <div class="form-fields">
+                            {{#if (eq setting.type "boolean")}}
+                                <input type="checkbox" id="sm-{{setting.key}}" data-dtype="Boolean" {{#if setting.value}}checked{{/if}}>
+                            {{else if (eq setting.type "number")}}
+                                {{#if setting.range}}
+                                    <input type="range" class="vsm-range-slider" min="{{setting.range.min}}" max="{{setting.range.max}}" step="{{setting.range.step}}" value="{{setting.value}}">
+                                    <input type="number" class="vsm-range-number" id="sm-{{setting.key}}" value="{{setting.value}}" min="{{setting.range.min}}" max="{{setting.range.max}}" step="{{setting.range.step}}">
+                                {{else}}
+                                    <input type="number" id="sm-{{setting.key}}" value="{{setting.value}}" step="any">
+                                {{/if}}
+                            {{else if (eq setting.type "string")}}
+                                {{#if setting.choices}}
+                                    <div class="vsm-choice-group">
+                                        {{#each setting.choices as |item|}}
+                                            <button type="button" class="vsm-choice-button{{#if (eq item.key setting.value)}} vsm-choice-active{{/if}}" data-value="{{item.key}}">{{item.value}}</button>
+                                        {{/each}}
+                                    </div>
+                                {{else if setting.filePicker}}
+                                    <input type="text" class="vsm-filepicker-input" name="{{setting.key}}" value="{{setting.value}}" data-dtype="String">
+                                    <button type="button" class="vsm-filepicker" data-type="{{setting.filePicker}}" data-target="{{setting.key}}" title="{{localize "FILES.BrowseTooltip"}}" tabindex="-1">
+                                        <i class="fas fa-file-import fa-fw"></i>
+                                    </button>
+                                {{else}}
+                                    <input type="text" id="sm-{{setting.key}}" value="{{setting.value}}" data-dtype="String">
+                                {{/if}}
+                            {{/if}}
+                        </div>
+                    {{/if}}
+                    <p class="notes" for="sm-{{setting.key}}" >{{setting.hint}}</p>
+                </div>
+        {{/inline}}
         {{!-- Меню настроек --}}
         <form class="vsm-settings-list-body">
             <div class="vsm-setting-list-header flexrow">
@@ -402,46 +443,67 @@
                 <div class="vsm-save-button flexrow vsm-right"><span>{{localize "visual-novel-reverse.visualSettingsMenu.saveButton"}}</span><i class="fas fa-save"></i></div>
             </div>
             <div class="vsm-settings-list">
-                {{#each settings as |setting|}}
-                    <div class="form-group vsm-setting-container"data-type="{{setting.type}}" data-key="{{setting.key}}">
-                        <label for="sm-{{setting.key}}" >{{setting.name}}</label>
-                        {{#if setting.button}}
-                            <button type="button" class="vsm-setting-menu-button" data-key="{{setting.key}}">
-                                <i class="{{setting.icon}}"></i>
-                                <label>{{setting.label}}</label>
-                            </button>
-                        {{else}}
-                            <div class="form-fields">
-                                {{#if (eq setting.type "boolean")}}
-                                    <input type="checkbox" id="sm-{{setting.key}}" data-dtype="Boolean" {{#if setting.value}}checked{{/if}}>
-                                {{else if (eq setting.type "number")}}
-                                    {{#if setting.range}}
-                                        <input type="range" class="vsm-range-slider" min="{{setting.range.min}}" max="{{setting.range.max}}" step="{{setting.range.step}}" value="{{setting.value}}">
-                                        <input type="number" class="vsm-range-number" id="sm-{{setting.key}}" value="{{setting.value}}" min="{{setting.range.min}}" max="{{setting.range.max}}" step="{{setting.range.step}}">
-                                    {{else}}
-                                        <input type="number" id="sm-{{setting.key}}" value="{{setting.value}}" step="any">
-                                    {{/if}}
-                                {{else if (eq setting.type "string")}}
-                                    {{#if setting.choices}}
-                                        <div class="vsm-choice-group">
-                                            {{#each setting.choices as |item|}}
-                                                <button type="button" class="vsm-choice-button{{#if (eq item.key setting.value)}} vsm-choice-active{{/if}}" data-value="{{item.key}}">{{item.value}}</button>
+                {{#if settingsCategories}}
+                    {{!-- "Настройки эффектов" - по категориям (apps/visualSettingsMenu.js EFFECTS_CATEGORIES) --}}
+                    {{#each settingsCategories as |category|}}
+                        <details class="vsm-settings-category" data-category="{{category.id}}"{{#if category.open}} open{{/if}}>
+                            <summary class="vsm-settings-category-header"><i class="{{category.icon}}"></i> {{category.name}}</summary>
+                            <div class="vsm-settings-category-body">
+                                {{#each category.settings as |setting|}}
+                                    {{> vsmSettingItem setting=setting}}
+                                {{/each}}
+                                {{#if category.rowControls}}
+                                    {{!-- Полоса режима ряда (apps/rowStyleControls.js) - состояние сцены, свои кнопки сохранения --}}
+                                    <div class="vn-row-controls">
+                                        <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.rowLayoutTitle"}}</h4>
+                                        {{#each @root.rowControls.fields as |field|}}
+                                            <div class="vn-row-field">
+                                                <span class="vn-row-field-name">{{field.label}}</span>
+                                                <input type="range" data-row-key="{{field.key}}" min="{{field.min}}" max="{{field.max}}" step="{{field.step}}" value="{{field.value}}">
+                                                <span class="vn-row-field-value">{{field.value}}</span>
+                                            </div>
+                                        {{/each}}
+                                        <div class="vn-row-buttons">
+                                            <button type="button" class="vn-row-save"><i class="fas fa-floppy-disk"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutSave"}}</button>
+                                            <button type="button" class="vn-row-cancel"><i class="fas fa-rotate-left"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutCancel"}}</button>
+                                            <button type="button" class="vn-row-default"><i class="fas fa-arrows-to-dot"></i> {{localize "visual-novel-reverse.effectsPanel.rowLayoutDefault"}}</button>
+                                        </div>
+                                        <p class="notes">{{localize "visual-novel-reverse.effectsPanel.rowLayoutHint"}}</p>
+
+                                        <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesShapeTitle"}}</h4>
+                                        <div class="vn-row-choices">
+                                            {{#each @root.rowControls.shapes as |shape|}}
+                                                <button type="button" class="vn-row-choice" data-shape="{{shape.id}}">
+                                                    <svg class="vn-row-shape-icon{{#if shape.fadeEdges}} vn-row-shape-faded{{/if}}" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polygon points="{{shape.iconPoints}}"/></svg>
+                                                    {{shape.label}}
+                                                </button>
                                             {{/each}}
                                         </div>
-                                    {{else if setting.filePicker}}
-                                        <input type="text" class="vsm-filepicker-input" name="{{setting.key}}" value="{{setting.value}}" data-dtype="String">
-                                        <button type="button" class="vsm-filepicker" data-type="{{setting.filePicker}}" data-target="{{setting.key}}" title="{{localize "FILES.BrowseTooltip"}}" tabindex="-1">
-                                            <i class="fas fa-file-import fa-fw"></i>
-                                        </button>
-                                    {{else}}
-                                        <input type="text" id="sm-{{setting.key}}" value="{{setting.value}}" data-dtype="String">
-                                    {{/if}}
+
+                                        <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesFrameTitle"}}</h4>
+                                        <div class="vn-row-choices">
+                                            {{#each @root.rowControls.themes as |theme|}}
+                                                <button type="button" class="vn-row-choice" data-theme="{{theme.id}}" style="--vn-swatch: {{theme.color}};"><span class="vn-row-swatch"></span> {{theme.label}}</button>
+                                            {{/each}}
+                                            <label class="vn-row-choice vn-row-custom" data-theme="custom"><input type="color" class="vn-row-custom-color" value="{{@root.rowControls.style.customColor}}"> {{localize "visual-novel-reverse.effectsPanel.talesThemeCustom"}}</label>
+                                        </div>
+
+                                        <h4 class="vn-row-title">{{localize "visual-novel-reverse.effectsPanel.talesBackgroundTitle"}}</h4>
+                                        <div class="vn-row-background">
+                                            <input type="color" class="vn-row-bg-color" value="{{@root.rowControls.style.bgColor}}" data-tooltip="{{localize "visual-novel-reverse.effectsPanel.talesBackgroundColor"}}">
+                                            <button type="button" class="vn-row-bg-image"><i class="fas fa-image"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundImage"}}</button>
+                                            <button type="button" class="vn-row-bg-clear"><i class="fas fa-xmark"></i> {{localize "visual-novel-reverse.effectsPanel.talesBackgroundClear"}}</button>
+                                        </div>
+                                    </div>
                                 {{/if}}
                             </div>
-                        {{/if}}
-                        <p class="notes" for="sm-{{setting.key}}" >{{setting.hint}}</p>
-                    </div>
-                {{/each}}
+                        </details>
+                    {{/each}}
+                {{else}}
+                    {{#each settings as |setting|}}
+                        {{> vsmSettingItem setting=setting}}
+                    {{/each}}
+                {{/if}}
             </div>
         </form>
     {{/if}}

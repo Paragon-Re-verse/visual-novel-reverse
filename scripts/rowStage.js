@@ -6,7 +6,7 @@
 // - rowMode - режим включён (переключатель в панели "Эффекты");
 // - rowLayout - положение и размеры (ползунки, ROW_LAYOUT_LIMITS). Пока ГМ двигает ползунки, несохранённый
 //   вариант рассылается по сокету (vnRowPreview) и показывается у всех; "Сохранить" пишет rowLayout;
-// - talesStyle - тема рамки и фон полосы (normalizeTalesStyle);
+// - talesStyle - форма полосы, тема рамки и фон полосы (normalizeTalesStyle);
 // - talesSpeaker - позиция говорящего (ГМ щёлкает по портрету в полосе), остальные слегка притемнены;
 // - talesLine - текущая реплика {pos, name, text, stamp}: из поля в панели "Эффекты" или из чата
 //   (сообщение от лица персонажа в полосе, настройка talesChatLines).
@@ -22,6 +22,8 @@ export const ROW_LAYOUT_LIMITS = {
     scale: { min: 60, max: 250, step: 5, default: 130 },
     gap: { min: -10, max: 10, step: 0.5, default: 0.5 },
     dim: { min: 0, max: 100, step: 5, default: 55 },
+    // Прозрачность внутреннего фона полосы (цвета или картинки): 0 - непрозрачный, 100 - фона не видно
+    bgTransparency: { min: 0, max: 100, step: 5, default: 0 },
 }
 
 export function normalizeRowLayout(layout) {
@@ -33,11 +35,24 @@ export function normalizeRowLayout(layout) {
 
 // Готовые темы рамки - основной цвет; светлая кромка и цвет имени получаются из него (color-mix в CSS)
 export const FRAME_THEMES = { gold: "#c9a24a", silver: "#a7b0ba", crimson: "#9b2430", dark: "#3a3a46" }
-const DEFAULT_TALES_STYLE = { theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: "" }
+
+// Формы полосы. Нижний край у всех горизонтальный - по нему обрезаются портреты. points - многоугольник
+// фона в процентах (clip-path), framePath - линии рамки в той же системе координат 0..100 (SVG).
+// "Стёртые края" - прямоугольник, растворяющийся слева и справа (mask), рамка - только сверху и снизу.
+export const STRIP_SHAPES = {
+    rectangle: { points: [[0, 0], [100, 0], [100, 100], [0, 100]] },
+    parallelogram: { points: [[5, 0], [100, 0], [95, 100], [0, 100]] },
+    slanted: { points: [[0, 14], [100, 0], [100, 100], [0, 100]] },
+    faded: { points: [[0, 0], [100, 0], [100, 100], [0, 100]], framePath: "M0,0 H100 M0,100 H100", fadeEdges: true },
+}
+const getShapeFramePath = (shape) => shape.framePath || `M${shape.points.map(([x, y]) => `${x},${y}`).join(" L")} Z`
+
+const DEFAULT_TALES_STYLE = { shape: "rectangle", theme: "gold", customColor: "#4a7fc9", bgColor: "#1c1f2b", bgImage: "" }
 const isHexColor = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
 
 export function normalizeTalesStyle(style) {
     return {
+        shape: style?.shape in STRIP_SHAPES ? style.shape : DEFAULT_TALES_STYLE.shape,
         theme: (style?.theme in FRAME_THEMES || style?.theme === "custom") ? style.theme : DEFAULT_TALES_STYLE.theme,
         customColor: isHexColor(style?.customColor) ? style.customColor : DEFAULT_TALES_STYLE.customColor,
         bgColor: isHexColor(style?.bgColor) ? style.bgColor : DEFAULT_TALES_STYLE.bgColor,
@@ -53,13 +68,14 @@ let storedRowLayoutKey = null
 
 function applyLayoutVars(rowElement, layout) {
     if (!rowElement) return
-    const { x, y, bandHeight, bandWidth, scale, gap, dim } = normalizeRowLayout(layout)
+    const { x, y, bandHeight, bandWidth, scale, gap, dim, bgTransparency } = normalizeRowLayout(layout)
     rowElement.style.setProperty("--vn-row-x", x)
     rowElement.style.setProperty("--vn-row-y", y)
     rowElement.style.setProperty("--vn-row-band-h", bandHeight)
     rowElement.style.setProperty("--vn-row-band-w", bandWidth)
     rowElement.style.setProperty("--vn-row-scale", scale / 100)
     rowElement.style.setProperty("--vn-row-gap", gap)
+    rowElement.style.setProperty("--vn-row-bg-opacity", 1 - bgTransparency / 100)
     // Затемнение - на слое затемнения фона (#vn-fx-darken-layer, styles/module.css #vn-body.vn-row-mode)
     document.getElementById("vn-body")?.style.setProperty("--vn-row-dim", dim / 100)
 }
@@ -132,7 +148,9 @@ function ensureStage(rowElement) {
     stageElement.innerHTML = `
         <div class="vn-tales-band">
             <div class="vn-tales-band-bg"></div>
-            <div class="vn-tales-frame"></div>
+            <svg class="vn-tales-frame" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <path class="vn-tales-frame-outer"/><path class="vn-tales-frame-inner"/>
+            </svg>
             <div class="vn-tales-actors"></div>
         </div>
         <div class="vn-tales-dialogue"><div class="vn-tales-name"></div><div class="vn-tales-text"></div></div>`
@@ -166,7 +184,14 @@ function syncActors(actorsElement, entries) {
 
 function applyStyle(rowElement, stageElement, style) {
     rowElement.style.setProperty("--vn-tales-frame", getFrameColor(style))
+    const shape = STRIP_SHAPES[style.shape]
+    const bandElement = stageElement.querySelector(".vn-tales-band")
+    bandElement.dataset.shape = style.shape
+    bandElement.classList.toggle("vn-tales-fade-edges", !!shape.fadeEdges)
+    const framePath = getShapeFramePath(shape)
+    stageElement.querySelectorAll(".vn-tales-frame path").forEach(pathElement => pathElement.setAttribute("d", framePath))
     const backgroundElement = stageElement.querySelector(".vn-tales-band-bg")
+    backgroundElement.style.clipPath = `polygon(${shape.points.map(([x, y]) => `${x}% ${y}%`).join(", ")})`
     backgroundElement.style.backgroundColor = style.bgColor
     // JSON.stringify - путь в кавычках с экранированием, чтобы он не вышел за пределы url(...)
     backgroundElement.style.backgroundImage = style.bgImage ? `url(${JSON.stringify(style.bgImage)})` : ""
